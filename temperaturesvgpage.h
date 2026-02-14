@@ -1,0 +1,339 @@
+// HTML-Template im Flash speichern (PROGMEM)
+const char html_temperaturverlauf[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Temperaturverlauf</title>
+    <style>
+        #graph svg {
+        max-width: 90vw;
+        max-height: 70vh;
+        font-family: Arial, sans-serif;
+}
+
+.error {
+    color: #d32f2f;
+    padding: 1rem;
+    border: 1px solid #ffcdd2;
+    background: #ffebee;
+}
+#graph:hover::after {
+    content: "Rechtsklick zum Speichern";
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 2px 5px;
+    font-size: 0.8em;
+    border-radius: 3px;
+}
+    </style>
+</head>
+<body>
+    <h1>Temperaturverlauf V4</h1>
+    <div id="graph" class="graph" @contextmenu.prevent="downloadSVG" style="position: relative;"></div>
+    <nav class="tab-navigation">
+        <ul class="tab-container">
+            <li class="tab-item">
+                <a href="/schedule" class="tab-link">Zeitschaltuhr</a>
+            </li>
+            <li class="tab-item">
+                <a href="/light" class="tab-link">Licht Direkt schalten</a>
+            </li>
+            <li class="tab-item">
+                <a href="/email" class="tab-link">Email abschicken</a>
+            </li>
+            <li class="tab-item">
+                <a href="/info" class="tab-link">Temperaturverlauf</a>
+            </li>
+            <li class="tab-item">
+                <a href="/csv" class="tab-link">CSV download</a>
+            </li>
+            <li class="tab-item">
+                <a href="/settings" class="tab-link">Einstellungen</a>
+            </li>
+            <!-- <li class="tab-item">
+                <a href="/restart" class="tab-link">Neustart</a>
+            </li> -->
+            <li class="tab-item">
+                <a href="/ram" class="tab-link">RAM-Info</a>
+            </li>
+        </ul>
+    </nav>
+    <script>
+        async function loadAndDrawGraph() {
+        // CSV-Daten laden
+        const response = await fetch('/csv');
+        if (!response.ok) throw new Error(`HTTP-Error: ${response.status}`);
+        const csvData = await response.text();
+
+        // Daten aufbereiten
+        const rows = csvData.split('\n').filter(row => row.trim() !== '');
+        const header = rows.shift();
+        
+        // Daten parsen
+        const data = rows.map((row, index) => {
+            try {
+                const [timestamp, tempStr] = row.split(';');
+                const temp = parseFloat(tempStr.replace(',', '.').replace(/[^0-9.-]/g, ''));
+                
+                // Überprüfe Temperaturbereich
+                if (temp < 15 || temp > 35) {
+                    console.warn(`Zeile ${index + 1}: Temperatur ${temp}°C außerhalb des gültigen Bereichs (15-35°C)`);
+                    return null;
+                }
+                
+                return { timestamp, temp };
+            } catch (e) {
+                console.error(`Fehler beim Parsen von Zeile ${index + 1}:`, row);
+                return null;
+            }
+        }).filter(d => d !== null);
+
+        if (data.length < 2) {
+            showError('Mindestens 2 Datenpunkte benötigt');
+            return;
+        }
+
+        // Daten chronologisch sortieren
+        data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        // SVG-Elemente
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        const margin = 40;
+        const width = 800;
+        const height = 400;
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        svg.innerHTML = `<rect width="100%" height="100%" fill="#fafafa"/>`;
+
+        // Skalierung berechnen
+        const temps = data.map(d => d.temp);
+        const minTemp = Math.floor(Math.min(...temps));
+        const maxTemp = Math.ceil(Math.max(...temps));
+        const tempRange = maxTemp - minTemp;
+        const yScale = (height - 2 * margin) / tempRange;
+        const xStep = (width - 2 * margin) / (data.length - 1);
+
+        // Hilfslinien (Y-Achse)
+        for (let t = minTemp; t <= maxTemp; t += 0.5) {
+            const y = height - margin - (t - minTemp) * yScale;
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            line.setAttribute('d', `M${margin},${y} H${width - margin}`);
+            line.setAttribute('stroke', t % 1 === 0 ? '#e0e0e0' : '#f0f0f0');
+            line.setAttribute('stroke-width', '0.5');
+            svg.appendChild(line);
+        }
+
+        // Tageswechsel erkennen und markieren
+        const dayMarkers = [];
+        let currentDay = null;
+        const dateFormatOptions = { day: '2-digit', month: '2-digit' };
+
+        data.forEach((d, i) => {
+            const date = new Date(d.timestamp);
+            const day = date.toISOString().split('T')[0];
+            
+            if (day !== currentDay) {
+                currentDay = day;
+                dayMarkers.push({
+                    index: i,
+                    date: date,
+                    xPos: margin + i * xStep
+                });
+            }
+        });
+
+        // Vertikale Linien und Beschriftungen zeichnen
+        const drawnDays = new Set();
+        dayMarkers.forEach(marker => {
+            const dateStr = marker.date.toLocaleDateString('de-DE', dateFormatOptions).replace(/\./g, '/');
+            
+            if (!drawnDays.has(dateStr)) {
+                // Vertikale Linie
+                const vLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                vLine.setAttribute('x1', marker.xPos);
+                vLine.setAttribute('y1', height - margin);
+                vLine.setAttribute('x2', marker.xPos);
+                vLine.setAttribute('y2', margin);
+                vLine.setAttribute('stroke', '#e0e0e0');
+                vLine.setAttribute('stroke-dasharray', '2,2');
+                svg.appendChild(vLine);
+
+                // Beschriftung
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute('x', marker.xPos);
+                text.setAttribute('y', height - margin + 18);
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('font-size', '10');
+                text.setAttribute('fill', '#666');
+                text.textContent = dateStr;
+                svg.appendChild(text);
+
+                drawnDays.add(dateStr);
+            }
+        });
+
+        // Y-Achsen-Beschriftung
+        for (let t = minTemp; t <= maxTemp; t++) {
+            const y = height - margin - (t - minTemp) * yScale;
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            text.setAttribute('x', margin - 5);
+            text.setAttribute('y', y + 3);
+            text.setAttribute('text-anchor', 'end');
+            text.setAttribute('font-size', '10');
+            text.textContent = `${t}°`;
+            svg.appendChild(text);
+        }
+
+        // Achsen zeichnen
+        const drawPath = (d, stroke) => {
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute('d', d);
+            path.setAttribute('stroke', stroke);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke-width', '1');
+            svg.appendChild(path);
+        };
+
+        // X- und Y-Achse
+        drawPath(`M${margin},${height - margin} H${width - margin}`, '#333');
+        drawPath(`M${margin},${height - margin} V${margin}`, '#333');
+
+        // Temperaturkurve
+        const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        const points = data.map((d, i) => 
+            `${margin + i * xStep},${height - margin - (d.temp - minTemp) * yScale}`
+        ).join(' ');
+        
+        polyline.setAttribute('points', points);
+        polyline.setAttribute('stroke', '#2196f3');
+        polyline.setAttribute('fill', 'none');
+        polyline.setAttribute('stroke-width', '2');
+        svg.appendChild(polyline);
+
+        // Aktuelle Temperatur-Annotation
+        const last = data[data.length - 1];
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute('x', width - margin);
+        text.setAttribute('y', margin + 15);
+        text.setAttribute('text-anchor', 'end');
+        text.setAttribute('font-size', '12');
+        text.textContent = `Aktuell: ${last.temp.toFixed(1)}°C`;
+        svg.appendChild(text);
+
+        const highlight = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        highlight.setAttribute("r", 6);
+        highlight.setAttribute("fill", "red");
+        highlight.setAttribute("stroke", "white");
+        highlight.setAttribute("stroke-width", "2");
+        highlight.style.display = "none"; // erstmal unsichtbar
+        svg.appendChild(highlight);
+
+        // Graph einfügen
+        const container = document.getElementById('graph');
+        container.innerHTML = '';
+        container.appendChild(svg);
+		const tooltip = document.createElement('div');
+tooltip.style.cssText = `
+    position: absolute;
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 3px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    font-size: 12px;
+`;
+document.getElementById('graph').appendChild(tooltip);
+
+// Mausbewegung verfolgen
+svg.addEventListener('mousemove', (e) => {
+    // Mausposition relativ zum SVG
+    const rect = svg.getBoundingClientRect();
+    const x = e.clientX - rect.left - margin;
+    const y = e.clientY - rect.top;
+
+    // Nur innerhalb des Diagrammbereichs
+    if(x < 0 || x > (width - 2*margin) || y < margin || y > (height - margin)) {
+        tooltip.style.opacity = '0';
+        return;
+    }
+
+    // Datenindex berechnen
+    const index = Math.round(x / xStep);
+    if(index < 0 || index >= data.length) return;
+
+    // Koordinaten des Punktes berechnen
+    const pointX = margin + index * xStep;
+    const pointY = height - margin - (data[index].temp - minTemp) * yScale;
+
+    // Highlight-Kreis verschieben und sichtbar machen
+    highlight.setAttribute("cx", pointX);
+    highlight.setAttribute("cy", pointY);
+    highlight.style.display = "block";
+
+    // Uhrzeit formatieren
+    const date = new Date(data[index].timestamp);
+    const timeStr = date.toLocaleTimeString('de-DE', { 
+        hour: '2-digit', 
+        minute: '2-digit'
+    });
+
+    // Tooltip anzeigen
+    tooltip.style.opacity = '1';
+    tooltip.textContent = `${timeStr} Uhr - ${data[index].temp.toFixed(1)}°C`;
+    tooltip.style.left = `${e.clientX + 10}px`;
+    tooltip.style.top = `${e.clientY + 10}px`;
+});
+
+svg.addEventListener('mouseleave', () => {
+    tooltip.style.opacity = '0';
+    highlight.style.display = "none";
+});
+
+    //} catch (error) {
+    //    showError(`Fehler: ${error.message}`);
+    //}
+}
+
+        function showError(msg) {
+            const div = document.getElementById('graph');
+            div.innerHTML = `<div style="color:red; padding:20px">${msg}</div>`;
+        }
+
+        // Automatisch ausführen
+        loadAndDrawGraph();
+		
+	// Event-Listener für Rechtsklick
+	document.getElementById('graph').addEventListener('contextmenu', function(e) {
+		e.preventDefault();
+		
+		// SVG-Daten generieren
+		const svgElement = this.querySelector('svg');
+		if (!svgElement) return;
+		
+		// SVG als String mit korrektem Namespace
+		const svgString = new XMLSerializer().serializeToString(svgElement);
+		const blob = new Blob([svgString], {type: 'image/svg+xml'});
+		const url = URL.createObjectURL(blob);
+		
+		// Temporären Download-Link erstellen
+		const a = document.createElement('a');
+		a.style.display = 'none';
+		a.href = url;
+		a.download = 'temperatur-grafik.svg';
+		document.body.appendChild(a);
+		a.click();
+		
+		// Aufräumen
+		URL.revokeObjectURL(url);
+		document.body.removeChild(a);
+	});
+
+    </script>
+</body>
+</html>
+)rawliteral";

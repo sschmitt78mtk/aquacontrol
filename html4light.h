@@ -1,0 +1,412 @@
+// HTML-Template im Flash speichern (PROGMEM)
+const char html_directlight[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <title>Aquarium Licht</title>
+    <meta charset="utf-8">
+    <link rel="shortcut icon" href="#">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        .light-container,
+        .status-container {
+            margin: 20px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            border: 2px solid #ddd;
+        }
+        .light-container h2 {
+            color: #2c3e50;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 10px;
+        }
+        .slider {
+            width: 100%;
+            height: 15px;
+            background: #ddd;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        .slider:hover {
+            opacity: 1;
+        }
+        .value-display {
+            text-align: center;
+            font-size: 20px;
+            margin-top: 10px;
+            margin-bottom: 15px;
+        }
+        .button-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+        .brightness-btn {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-weight: bold;
+        }
+        .brightness-btn:hover {
+            background-color: #45a049;
+        }
+        .brightness-btn.active {
+            background-color: #2196F3;
+            box-shadow: 0 0 5px rgba(0,0,0,0.3);
+        }
+        .brightness-btn.stufe0 { background-color: #616161; }
+        .brightness-btn.stufe1 { background-color: #8BC34A; }
+        .brightness-btn.stufe2 { background-color: #FFC107; }
+        .brightness-btn.stufe3 { background-color: #FF9800; }
+        .brightness-btn.stufe4 { background-color: #F44336; }
+		
+        .switch-btn {
+			width: 80%;
+            padding: 15px 30px;
+            font-size: 18px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            margin: 5px;
+        }
+        .switch-btn.on {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .switch-btn.off {
+            background-color: #F44336;
+            color: white;
+        }
+        .switch-btn:hover {
+            opacity: 0.9;
+            transform: scale(1.05);
+        }
+
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .status-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+        .status-time {
+            font-size: 14px;
+            color: #666;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 8px;
+        }
+		
+        .status-on {
+			background-color: #4CAF50;
+            color: white;
+        }
+        .status-off {
+			background-color: #F44336;
+            color: white;
+        }
+        .refresh-btn {
+            background: #ddd;
+            border: 1px solid #bbb;
+            color: #333;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .refresh-btn:hover {
+            background: #ccc;
+        }
+
+    </style>
+</head>
+<body>
+    <h1>Aquacontrol V4</h1>
+    <div class="status-container" id="statusContainer">
+        <div class="status-header">
+            <div class="status-title">Status</div>
+            <button class="refresh-btn" onclick="loadStatus()">Aktualisieren</button>
+            <button class="lock-btn" onclick="toggleLock()" style="margin-left: 10px;">🔒 Verriegelung</button>
+        </div>
+        <div class="status-time" id="statusTime">21:00:07</div>
+        <div class="status-grid">
+            <div class="status-item">
+				<button class="switch-btn" onclick="ToggleDeviceState(0)">
+                <div class="status-label">Licht PWM</div>
+                <div class="status-value" id="statusDevice0">0</div>
+				</button>
+            </div>
+            <div class="status-item">
+				<button class="switch-btn" onclick="ToggleDeviceState(1)">
+                <div class="status-label">Kühlung PWM</div>
+                <div class="status-value" id="statusDevice1">0</div>
+				</button>
+            </div>
+            <div class="status-item">
+                <button class="switch-btn" onclick="ToggleDeviceState(2)">
+				<div class="status-label">Hauptlicht</div>
+                <div class="status-value status-off" id="statusDevice2">AUS</div>
+				</button>
+            </div>
+            <div class="status-item">
+				<button class="switch-btn" onclick="ToggleDeviceState(3)">
+                <div class="status-label">CO2</div>
+                <div class="status-value status-on" id="statusDevice3">AUS</div>
+				</button>
+            </div>
+            <div class="status-item">
+				<button class="switch-btn" onclick="ToggleDeviceState(4)">
+                <div class="status-label">Mondlicht</div>
+                <div class="status-value status-off" id="statusDevice4">AUS</div>
+				</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="light-container">
+        <h2>Hintergrundlicht</h2>
+        <div class="slider-container">
+            <h3>Helligkeit in 1023 Schritten</h3>
+            <input type="range" min="0" max="1023" value="1023" class="slider" id="brightnessSlider1">
+            <div class="value-display">Helligkeit: <span id="brightnessValue1">1023</span> (PWM)</div>
+            
+            <div class="button-container">
+                <button class="brightness-btn stufe0" data-value="0" data-label="Stufe 0 (0%)">Stufe 0 (0%)</button>
+                <button class="brightness-btn stufe1" data-value="150" data-label="Stufe 1 (15%)">Stufe 1 (15%)</button>
+                <button class="brightness-btn stufe2" data-value="250" data-label="Stufe 2 (25%)">Stufe 2 (25%)</button>
+                <button class="brightness-btn stufe3" data-value="500" data-label="Stufe 3 (50%)">Stufe 3 (50%)</button>
+                <button class="brightness-btn stufe4 active" data-value="1023" data-label="Stufe 4 (100%)">Stufe 4 (100%)</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="light-container">
+        <h2>Ventilator</h2>
+        <div class="slider-container">
+            <h3>Geschwindigkeit in 1023 Schritten</h3>
+            <input type="range" min="0" max="1023" value="1023" class="slider" id="brightnessSlider2">
+            <div class="value-display">Geschwindigkeit: <span id="brightnessValue2">1023</span> (PWM)</div>
+            
+            <div class="button-container">
+                <button class="brightness-btn stufe0" data-value="0" data-label="Stufe 0 (0%)">Stufe 0 (0%)</button>
+                <button class="brightness-btn stufe2" data-value="512" data-label="Stufe 2 (50%)">Stufe 2 (50%)</button>
+                <button class="brightness-btn stufe4 active" data-value="1023" data-label="Stufe 4 (100%)">Stufe 4 (100%)</button>
+            </div>
+        </div>
+    </div>
+    <nav class="tab-navigation">
+        <ul class="tab-container">
+            <li class="tab-item">
+                <a href="/schedule" class="tab-link">Zeitschaltuhr</a>
+            </li>
+            <li class="tab-item">
+                <a href="/light" class="tab-link">Licht Direkt schalten</a>
+            </li>
+            <li class="tab-item">
+                <a href="/email" class="tab-link">Email abschicken</a>
+            </li>
+            <li class="tab-item">
+                <a href="/info" class="tab-link">Temperaturverlauf</a>
+            </li>
+            <li class="tab-item">
+                <a href="/csv" class="tab-link">CSV download</a>
+            </li>
+            <li class="tab-item">
+                <a href="/settings" class="tab-link">Einstellungen</a>
+            </li>
+            <!-- <li class="tab-item">
+                <a href="/restart" class="tab-link">Neustart</a>
+            </li> -->
+            <li class="tab-item">
+                <a href="/ram" class="tab-link">RAM-Info</a>
+            </li>
+        </ul>
+    </nav>
+
+	
+    <script>
+        // Konfiguration für beide Lichter
+		var deviceStates = [0,0,0,0,0];
+        var toggleLocked = true;
+
+        function toggleLock() {
+            toggleLocked = !toggleLocked;
+        }
+
+        const lights = [
+            { id: 0, sliderId: 'brightnessSlider1', valueId: 'brightnessValue1' },
+            { id: 1, sliderId: 'brightnessSlider2', valueId: 'brightnessValue2' }
+        ];
+
+        lights.forEach(light => {
+            const slider = document.getElementById(light.sliderId);
+            const valueDisplay = document.getElementById(light.valueId);
+            const container = slider.closest('.slider-container');
+            const buttons = container.querySelectorAll('.brightness-btn');
+
+            // Event-Listener für Slider
+            slider.addEventListener('input', function() {
+                const value = parseInt(this.value);
+                valueDisplay.textContent = value;
+                setDeviceState(light.id, value);
+                //updateBrightness(light.id, value);
+            });
+
+            // Event-Listener für Buttons
+            buttons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const value = parseInt(this.getAttribute('data-value'));
+                    const label = this.getAttribute('data-label');
+                    
+                    // Slider und Anzeige aktualisieren
+                    slider.value = value;
+                    valueDisplay.textContent = value;
+                    
+                    // Aktiven Button markieren (nur in diesem Container)
+                    buttons.forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+            
+                    setDeviceState(light.id, value);
+                    //updateBrightness(light.id, value);
+                });
+            });
+        });
+
+        // Funktion zum Aktualisieren der Helligkeit
+        function updateBrightness(lightId, value) {
+            fetch('/setBrightness', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    light: lightId,
+                    value: value
+                })
+            }).catch(error => console.error('Error:', error));
+        }
+		
+		// Funktion zum Setzen des Device-Status
+		function setDeviceState(deviceId, state) {
+			fetch('/setDeviceState', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					device: deviceId,
+					value: state
+				})
+			}).catch(error => console.error('Error:', error));
+		}
+		
+		// Funktion zum Setzen des Device-Status
+		function ToggleDeviceState(deviceId) {
+			currentState = deviceStates[deviceId];
+			if (deviceId < 2) return;
+            if (deviceId >= 2 && toggleLocked) {
+                alert("Funktion verriegelt. Bitte zuerst Verriegelung aufheben.");
+                return;
+            }
+			if (currentState > 0) {
+				deviceStates[deviceId] = 0;
+			} else {
+				deviceStates[deviceId] = 1;
+			}
+			updateAllStatus();
+			
+			fetch('/setDeviceState', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					device: deviceId,
+					value: deviceStates[deviceId]
+				})
+			}).catch(error => console.error('Error:', error));
+		}
+		
+
+        
+        // Status beim Laden der Seite abrufen
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStatus();
+            setInterval(loadStatus, 30000);
+        });
+
+        function loadStatus() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('statusTime').textContent = data.time;                
+					deviceStates[0] = data.LIGHTPWM;
+					deviceStates[1] = data.COOLINGPWM;
+					deviceStates[2] = data.RELAYLIGHT
+					deviceStates[3] = data.RELAYCO2
+					deviceStates[4] = data.RELAYMOON
+					updateAllStatus();
+                    updateSlidersFromStatus();
+                })
+                .catch(error => {
+                    console.error('Fehler beim Laden des Status:', error);
+                    document.getElementById('statusTime').textContent = 'Fehler beim Laden';
+                });
+        }
+
+        function updateSlidersFromStatus() {
+            // Aktualisiere brightnessSlider1 mit deviceStates[0]
+            const slider1 = document.getElementById('brightnessSlider1');
+            const value1 = document.getElementById('brightnessValue1');
+            slider1.value = deviceStates[0];
+            value1.textContent = deviceStates[0];
+
+            // Aktualisiere brightnessSlider2 mit deviceStates[1]
+            const slider2 = document.getElementById('brightnessSlider2');
+            const value2 = document.getElementById('brightnessValue2');
+            slider2.value = deviceStates[1];
+            value2.textContent = deviceStates[1];
+        }
+		
+		
+		function updateAllStatus() {
+			for (let device = 0; device < 5; device++) {
+				elementname = 'statusDevice' + device;
+				const element = document.getElementById(elementname);
+				if (device < 2){
+					element.textContent = deviceStates[device];
+					if (deviceStates[device] > 0) {
+						element.className = 'status-value status-on';
+					} else {
+						element.className = 'status-value status-off';
+					}
+				} else {
+					if (deviceStates[device] === 1) {
+						element.textContent = 'EIN';
+						element.className = 'status-value status-on';
+					} else {
+						element.textContent = 'AUS';
+						element.className = 'status-value status-off';
+					}
+				}
+			}
+        }
+    </script>
+</body></html>
+)rawliteral";
