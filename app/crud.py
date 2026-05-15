@@ -102,10 +102,13 @@ class CrudManager:
         return self.temperature
 
     def add_temperature_entry(self, timestamp: int, temp: float):
+        """Add a temperature reading to the circular buffer.
+        Note: Does NOT auto-save to disk. The background loop handles
+        periodic saves via save_all() at backupInterval_mins, matching
+        the ESP8266 behavior where saveToEEPROM() is only called explicitly."""
         self.temperature.timestamps[self.temperature.index] = timestamp
         self.temperature.history[self.temperature.index] = temp_float2int(temp)
         self.temperature.index = (self.temperature.index + 1) % HISTORY_SIZE
-        self._save_pickle(TEMPERATURE_FILE, self.temperature)
 
     def clear_temperature_history(self):
         self.temperature = TemperatureHistory()

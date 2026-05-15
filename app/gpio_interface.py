@@ -59,7 +59,7 @@ class RPiGPIOController(GPIOController):
     """Real RPi GPIO implementation using gpiozero (preferred) or RPi.GPIO."""
 
     def __init__(self):
-        self._pwm_devices = {}
+        self._devices = {}  # Cache all device instances by pin
         self._initialized = False
         self._use_gpiozero = False
         self._use_rpigpio = False
@@ -85,10 +85,10 @@ class RPiGPIOController(GPIOController):
 
     def set_pwm(self, pin: int, value: int):
         if self._use_gpiozero:
-            if pin not in self._pwm_devices:
-                self._pwm_devices[pin] = self._gpiozero_PWMOutputDevice(pin, frequency=1000)
+            if pin not in self._devices:
+                self._devices[pin] = self._gpiozero_PWMOutputDevice(pin, frequency=1000)
             # gpiozero uses 0.0 to 1.0 range
-            self._pwm_devices[pin].value = value / 1023.0
+            self._devices[pin].value = value / 1023.0
         else:
             self._GPIO.setup(pin, self._GPIO.OUT)
             pwm = self._GPIO.PWM(pin, 1000)
@@ -96,28 +96,30 @@ class RPiGPIOController(GPIOController):
 
     def set_digital(self, pin: int, state: bool):
         if self._use_gpiozero:
-            if pin not in self._pwm_devices:
-                self._pwm_devices[pin] = self._gpiozero_DigitalOutputDevice(pin)
-            self._pwm_devices[pin].value = state
+            if pin not in self._devices:
+                self._devices[pin] = self._gpiozero_DigitalOutputDevice(pin)
+            self._devices[pin].value = state
         else:
             self._GPIO.setup(pin, self._GPIO.OUT)
             self._GPIO.output(pin, self._GPIO.HIGH if state else self._GPIO.LOW)
 
     def get_digital(self, pin: int) -> bool:
         if self._use_gpiozero:
-            device = self._gpiozero_DigitalInputDevice(pin)
-            return bool(device.value)
+            # Cache input devices to avoid creating new instances on every call
+            if pin not in self._devices:
+                self._devices[pin] = self._gpiozero_DigitalInputDevice(pin)
+            return bool(self._devices[pin].value)
         else:
             self._GPIO.setup(pin, self._GPIO.IN)
             return bool(self._GPIO.input(pin))
 
     def cleanup(self):
         if self._use_gpiozero:
-            for dev in self._pwm_devices.values():
+            for dev in self._devices.values():
                 dev.close()
         else:
             self._GPIO.cleanup()
-        self._pwm_devices.clear()
+        self._devices.clear()
 
 
 class MockGPIOController(GPIOController):

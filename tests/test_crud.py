@@ -38,15 +38,17 @@ def test_schedule_add_and_retrieve(crud):
 def test_temperature_history(crud):
     """Test adding and retrieving temperature history."""
     import time
+    # Use a fresh TemperatureHistory to avoid index offset from loaded pickle data
+    from app.crud import TemperatureHistory
+    crud.temperature = TemperatureHistory()
     ts = int(time.time())
     crud.add_temperature_entry(ts, 25.5)
     crud.add_temperature_entry(ts + 60, 26.0)
 
     hist = crud.get_temperature_history()
-    assert hist.timestamps[0] == ts or hist.timestamps[1] == ts
-    # Check that entries were stored (find non-zero entries)
-    non_zero = [t for t in hist.timestamps if t != 0]
-    assert len(non_zero) == 2
+    # Entries should be at index 0 and 1 in the fresh circular buffer
+    assert hist.timestamps[0] == ts
+    assert hist.timestamps[1] == ts + 60
 
 
 def test_temperature_csv(crud):

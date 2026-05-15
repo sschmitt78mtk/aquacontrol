@@ -28,7 +28,7 @@ from app.scheduler import Scheduler
 from app.temperature import TemperatureController
 from app.email_sender import EmailSender
 from app.crud import get_crud, ScheduleEntry
-from app.time_utils import get_formatted_date, get_esp_day_of_week
+from app.time_utils import get_formatted_date, get_esp_day_of_week, adjust_for_dst
 
 # Setup logging
 logging.basicConfig(
@@ -86,8 +86,8 @@ async def background_loop():
                 crud = get_crud()
                 crud.add_temperature_entry(int(datetime.now().timestamp()), temp)
 
-                # Check temperature alarms
-                if settings.emailme and (temp >= settings.temp_alarmhigh_treshold or temp <= settings.temp_alarmlow_treshold):
+                # Check temperature alarms (use >/< like ESP8266, not >=/<=)
+                if settings.emailme and (temp > settings.temp_alarmhigh_treshold or temp < settings.temp_alarmlow_treshold):
                     emailer.send_alarm(temp)
                 logger.info(f"[LOOP] Temperature: {temp:.1f}°C")
 
@@ -99,8 +99,10 @@ async def background_loop():
                 emailer.reset_weekly_flag()
 
                 # Weekly report
+                # ESP8266 uses tm_wday (Sunday=0), Python uses Monday=0.
+                # Use get_esp_day_of_week() to match the ESP8266 format.
                 if settings.emailme and not settings.skipmail:
-                    if (now.weekday() == settings.weeklyReport_tm_wday and
+                    if (get_esp_day_of_week() == settings.weeklyReport_tm_wday and
                             now.hour == settings.weeklyReport_tm_hour and
                             now.minute == settings.weeklyReport_tm_min):
                         emailer.send_weekly_report()
@@ -302,19 +304,20 @@ async def api_update_schedule(entries: list[ScheduleEntryIn]):
 
 @app.post("/api/device")
 async def api_set_device(data: DeviceStateRequest):
-    """Manually set a device to a specific value."""
+    """Manually set a device to a specific value.
+    Port of ESP8266 handleSetDeviceState() - value is raw PWM (0-1023) or on/off for relays."""
     device = data.device
     value = data.value
 
-    if device == 0:  # PWM Light
-        light_fader.fade(LIGHT_LEVELS[value] if value < len(LIGHT_LEVELS) else value, 2000)
-    elif device == 1:  # PWM Cooling
-        cooling_fader.fade(value, 2000)
-    elif device == 2:  # Relay Light
+    if device == 0:  # PWM Light - raw value 0-1023, 500ms fade (matching ESP8266)
+        light_fader.fade(value, 500)
+    elif device == 1:  # PWM Cooling - raw value 0-1023, 500ms fade (matching ESP8266)
+        cooling_fader.fade(value, 500)
+    elif device == 2:  # Relay Light (active-LOW)
         scheduler.set_relay(RELAYLIGHT_PIN, value > 0)
-    elif device == 3:  # Relay CO2
+    elif device == 3:  # Relay CO2 (active-LOW)
         scheduler.set_relay(RELAYCO2_PIN, value > 0)
-    elif device == 4:  # Relay Moon
+    elif device == 4:  # Relay Moon (active-LOW)
         scheduler.set_relay(RELAYMOON_PIN, value > 0)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown device: {device}")
@@ -350,6 +353,26 @@ async def api_temperature_current():
 async def api_light_levels():
     """Get available light levels."""
     return {"levels": LIGHT_LEVELS, "count": len(LIGHT_LEVELS)}
+
+
+@app.get("/restart", response_class=HTMLResponse)
+async def restart_page():
+    """Save data and restart (port of ESP8266 handleRestart)."""
+    get_crud().save_all()
+    try:
+        import subprocess
+        subprocess.Popen(["sudo", "reboot"])
+        return HTMLResponse("<html><body><h1>Aquacontrol wird neu gestartet...</h1><p>Seite in 60 Sekunden neu laden.</p></body></html>")
+    except Exception as e:
+        logger.error(f"[RESTART] Error: {e}")
+        return HTMLResponse(f"<html><body><h1>Restart fehlgeschlagen: {e}</h1><a href='/'>Back</a></body></html>")
+
+
+@app.get("/save", response_class=HTMLResponse)
+async def save_page():
+    """Manually save all data to disk (port of ESP8266 handlesaveTemperatureToEEPROM)."""
+    get_crud().save_all()
+    return HTMLResponse("<html><body><h1>Messdaten gespeichert.</h1><a href='/'>Back</a></body></html>")
 
 
 # Run with: uvicorn app.main:app --host 0.0.0.0 --port 8080

@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.gpio_interface import (
     get_gpio, LIGHT_PWMPIN, COOLING_PWMPIN,
     RELAYLIGHT_PIN, RELAYCO2_PIN, RELAYMOON_PIN,
+    COOLING_OFF_PIN,
     DEVICE_PWMLIGHT, DEVICE_COOLING, DEVICE_LIGHT,
     DEVICE_CO2, DEVICE_MOON, LIGHT_LEVELS,
     GPIOController,
@@ -82,36 +83,41 @@ class Scheduler:
                 self.check_schedule(h, m)
 
     def check_max_cooling_time(self):
-        """Auto-shutoff cooling after maxcooling_mins."""
+        """Auto-shutoff cooling after maxcooling_mins or low water level.
+        Port of ESP8266 checkmaxcoolingTime() which also checks COOLING_OFF_PIN."""
         settings = get_settings()
         if self._cooling_fader.brightness > 0:
+            # Check water level sensor (COOLING_OFF_PIN LOW = low water)
+            low_water = not self._gpio.get_digital(COOLING_OFF_PIN)
             if self._cooling_shutoff_time == 0.0:
                 self._cooling_shutoff_time = time.monotonic() + settings.maxcooling_mins * 60
                 logger.info("[SCHEDULE] Cooling ON - timer started")
-            elif time.monotonic() > self._cooling_shutoff_time:
-                logger.info("[SCHEDULE] Max cooling time reached - shutting off")
+            elif time.monotonic() > self._cooling_shutoff_time or low_water:
+                reason = "low water level" if low_water else "max cooling time reached"
+                logger.info(f"[SCHEDULE] Cooling auto-shutoff: {reason}")
                 self._cooling_fader.fade(0, 5)
                 self._cooling_fader.upd()
-                self.set_relay(COOLING_PWMPIN, False)
+                self._gpio.set_digital(COOLING_PWMPIN, False)  # PWM pin: LOW = off
                 self._cooling_shutoff_time = 0.0
         else:
             self._cooling_shutoff_time = 0.0
 
     def off_all(self):
-        """Turn everything off (scheduled at 23:00)."""
+        """Turn everything off (scheduled at 23:00).
+        PWM pins use standard logic (LOW=off). Relays use active-LOW."""
         logger.info("[SCHEDULE] off_all()")
         if self._light_fader.brightness != 0:
             self._light_fader.fade(0, 5)
             self._light_fader.upd()
-            self.set_relay(LIGHT_PWMPIN, False)
+            self._gpio.set_digital(LIGHT_PWMPIN, False)  # PWM pin: LOW = off
 
         if self._cooling_fader.brightness != 0:
             self._cooling_fader.fade(0, 5)
             self._cooling_fader.upd()
-            self.set_relay(COOLING_PWMPIN, False)
+            self._gpio.set_digital(COOLING_PWMPIN, False)  # PWM pin: LOW = off
 
-        self.set_relay(RELAYLIGHT_PIN, False)  # OFF (active LOW -> HIGH)
-        self.set_relay(RELAYCO2_PIN, False)    # OFF
+        self.set_relay(RELAYLIGHT_PIN, False)  # Relay OFF (active LOW -> HIGH)
+        self.set_relay(RELAYCO2_PIN, False)    # Relay OFF
 
     def update_pwm_outputs(self):
         """Called every second to apply fader updates to GPIO."""
@@ -122,10 +128,13 @@ class Scheduler:
             self._apply_pwm(COOLING_PWMPIN, self._cooling_fader.brightness)
 
     def _apply_pwm(self, pin: int, value: int):
-        """Apply PWM value to GPIO pin, handling 0/1023 edge cases."""
+        """Apply PWM value to GPIO pin, handling 0/1023 edge cases.
+        PWM pins use standard logic (LOW=off, HIGH=on), NOT active-LOW like relays.
+        This matches the ESP8266 where setRelay for PWM pins uses digitalWrite(pin, LOW/HIGH)
+        without the active-LOW inversion used for relay pins."""
         if value == 0:
-            self.set_relay(pin, False)  # turn off relay
+            self._gpio.set_digital(pin, False)  # LOW = off (standard logic)
         elif value >= 1023:
-            self.set_relay(pin, True)   # turn on relay
+            self._gpio.set_digital(pin, True)   # HIGH = on (standard logic)
         else:
             self._gpio.set_pwm(pin, value)
