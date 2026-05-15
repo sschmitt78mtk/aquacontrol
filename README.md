@@ -1,5 +1,7 @@
 # AquaControl - ESP8266 Aquarium Monitoring and Control System
 
+## This branch is working but will no longer be maintained in favour for the Raspberry-branch
+
 ## Overview
 
 AquaControl is an Arduino-based project for ESP8266 microcontrollers that provides dual functionality for aquarium management:
