@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AquaControl Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #1a1a2e; color: #eee; }
+        h1 { color: #00d2ff; }
+        .card { background: #16213e; border-radius: 10px; padding: 20px; margin: 10px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+        .card h2 { margin-top: 0; color: #0f3460; }
+        .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
+        .status-item { background: #0f3460; border-radius: 8px; padding: 15px; text-align: center; }
+        .status-item .label { font-size: 12px; color: #888; text-transform: uppercase; }
+        .status-item .value { font-size: 24px; font-weight: bold; margin-top: 5px; }
+        .status-item .value.on { color: #00ff88; }
+        .status-item .value.off { color: #ff4444; }
+        .btn { background: #00d2ff; color: #1a1a2e; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn:hover { background: #00b8e6; }
+        .btn.danger { background: #ff4444; }
+        .btn.warning { background: #ffbb33; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #333; }
+        th { background: #0f3460; color: #00d2ff; }
+        .tab { overflow: hidden; margin-bottom: 10px; }
+        .tab button { background: #0f3460; color: #eee; padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px 5px 0 0; margin-right: 5px; }
+        .tab button.active { background: #00d2ff; color: #1a1a2e; font-weight: bold; }
+        .tabcontent { display: none; }
+        .tabcontent.active { display: block; }
+        input, select { padding: 8px; border-radius: 5px; border: 1px solid #333; background: #0f3460; color: #eee; margin: 5px; }
+        .refresh { float: right; color: #888; font-size: 12px; }
+        .menu { display: flex; gap: 10px; margin-bottom: 20px; }
+        .menu a { color: #00d2ff; text-decoration: none; padding: 8px 16px; background: #0f3460; border-radius: 5px; }
+        .menu a:hover { background: #00d2ff; color: #1a1a2e; }
+    </style>
+</head>
+<body>
+    <h1>🌊 AquaControl <span class="refresh" id="lastUpdate">-</span></h1>
+
+    <div class="menu">
+        <a href="#dashboard" onclick="showTab('dashboard')">Dashboard</a>
+        <a href="#schedule" onclick="showTab('schedule')">Zeitplan</a>
+        <a href="#parameters" onclick="showTab('parameters')">Parameter</a>
+        <a href="#temp" onclick="showTab('temp')">Temperatur</a>
+    </div>
+
+    <!-- Dashboard Tab -->
+    <div id="dashboard" class="tabcontent active">
+        <div class="card">
+            <h2>Live Status</h2>
+            <div class="status-grid" id="statusGrid">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+        <div class="card">
+            <h2>Schnellaktionen</h2>
+            <button class="btn" onclick="setDevice(0, 6)">Licht 100%</button>
+            <button class="btn warning" onclick="setDevice(0, 0)">Licht AUS</button>
+            <button class="btn" onclick="setDevice(2, 1)">Relais Licht AN</button>
+            <button class="btn warning" onclick="setDevice(2, 0)">Relais Licht AUS</button>
+            <button class="btn" onclick="setDevice(3, 1)">CO₂ AN</button>
+            <button class="btn warning" onclick="setDevice(3, 0)">CO₂ AUS</button>
+        </div>
+    </div>
+
+    <!-- Schedule Tab -->
+    <div id="schedule" class="tabcontent">
+        <div class="card">
+            <h2>Zeitplan</h2>
+            <table id="scheduleTable">
+                <thead>
+                    <tr>
+                        <th>Zeit</th>
+                        <th>Gerät</th>
+                        <th>Wert</th>
+                        <th>Fade (min)</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduleBody">
+                    <!-- Populated by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Parameters Tab -->
+    <div id="parameters" class="tabcontent">
+        <div class="card">
+            <h2>Systemparameter</h2>
+            <div id="paramsDiv">
+                <!-- Populated by JS -->
+            </div>
+            <button class="btn" onclick="saveParams()">Speichern</button>
+            <button class="btn danger" onclick="resetHistory()">Temperaturverlauf löschen</button>
+        </div>
+    </div>
+
+    <!-- Temperature Tab -->
+    <div id="temp" class="tabcontent">
+        <div class="card">
+            <h2>Temperatur</h2>
+            <p>Aktuelle Temperatur: <strong id="currentTemp">-</strong></p>
+            <p><a href="/api/temperature/csv" class="btn">CSV herunterladen</a></p>
+        </div>
+    </div>
+
+    <script>
+        let autoRefresh = null;
+
+        function showTab(name) {
+            document.querySelectorAll('.tabcontent').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab button').forEach(b => b.classList.remove('active'));
+            document.getElementById(name).classList.add('active');
+        }
+
+        function updateStatus() {
+            fetch('/api/status')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+                    const g = document.getElementById('statusGrid');
+                    g.innerHTML = `
+                        <div class="status-item"><div class="label">Temperatur</div><div class="value">${data.temp.toFixed(1)}°C</div></div>
+                        <div class="status-item"><div class="label">Zeit</div><div class="value">${data.time}</div></div>
+                        <div class="status-item"><div class="label">Datum</div><div class="value">${data.date}</div></div>
+                        <div class="status-item"><div class="label">Licht PWM</div><div class="value">${data.LIGHTPWM}</div></div>
+                        <div class="status-item"><div class="label">Kühlung PWM</div><div class="value">${data.COOLINGPWM}</div></div>
+                        <div class="status-item"><div class="label">Licht Relais</div><div class="value ${data.RELAYLIGHT ? 'on' : 'off'}">${data.RELAYLIGHT ? 'AN' : 'AUS'}</div></div>
+                        <div class="status-item"><div class="label">CO₂ Relais</div><div class="value ${data.RELAYCO2 ? 'on' : 'off'}">${data.RELAYCO2 ? 'AN' : 'AUS'}</div></div>
+                        <div class="status-item"><div class="label">Mond Relais</div><div class="value ${data.RELAYMOON ? 'on' : 'off'}">${data.RELAYMOON ? 'AN' : 'AUS'}</div></div>
+                    `;
+                })
+                .catch(e => console.error('Status error:', e));
+
+            fetch('/api/schedule')
+                .then(r => r.json())
+                .then(data => {
+                    const tbody = document.getElementById('scheduleBody');
+                    const devices = ['PWM Licht', 'PWM Kühlung', 'Relais Licht', 'Relais CO₂', 'Relais Mond'];
+                    tbody.innerHTML = data.map(e =>
+                        `<tr><td>${String(e.hour).padStart(2,'0')}:${String(e.minute).padStart(2,'0')}</td><td>${devices[e.device] || e.device}</td><td>${e.brightness}</td><td>${e.fadeDuration}</td></tr>`
+                    ).join('');
+                })
+                .catch(e => console.error('Schedule error:', e));
+
+            fetch('/api/parameters')
+                .then(r => r.json())
+                .then(data => {
+                    const d = document.getElementById('paramsDiv');
+                    d.innerHTML = Object.entries(data).map(([k, v]) =>
+                        `<div><label>${k}: <input type="text" name="${k}" value="${v}" style="width:80px"></label></div>`
+                    ).join('');
+                })
+                .catch(e => console.error('Params error:', e));
+
+            fetch('/api/temperature/current')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('currentTemp').textContent = data.temperature.toFixed(1) + '°C';
+                })
+                .catch(e => console.error('Temp error:', e));
+        }
+
+        function setDevice(device, value) {
+            fetch('/api/device', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({device, value})
+            }).then(r => r.json()).then(d => {
+                console.log('Device set:', d);
+                updateStatus();
+            }).catch(e => console.error('Device error:', e));
+        }
+
+        function saveParams() {
+            const inputs = document.querySelectorAll('#paramsDiv input');
+            const data = {};
+            inputs.forEach(i => {
+                let val = i.value;
+                if (val === 'true' || val === 'True') val = true;
+                else if (val === 'false' || val === 'False') val = false;
+                else if (!isNaN(val) && val !== '') val = Number(val);
+                data[i.name] = val;
+            });
+            fetch('/api/parameters', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            }).then(r => r.json()).then(d => {
+                console.log('Params saved:', d);
+                alert('Parameter gespeichert!');
+            }).catch(e => console.error('Params error:', e));
+        }
+
+        function resetHistory() {
+            if (confirm('Temperaturverlauf wirklich löschen?')) {
+                fetch('/api/reset', {method: 'POST'})
+                    .then(r => r.json())
+                    .then(d => alert(d.message))
+                    .catch(e => console.error('Reset error:', e));
+            }
+        }
+
+        // Start auto-refresh every 5 seconds
+        updateStatus();
+        autoRefresh = setInterval(updateStatus, 5000);
+    </script>
+</body>
+</html>

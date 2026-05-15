@@ -1,2 +1,7 @@
 ESP8266*
 .clinerules
+.venv/
+.pytest_cache/
+__pycache__/
+*.pickle
+.env
