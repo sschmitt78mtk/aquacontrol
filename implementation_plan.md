@@ -7,38 +7,41 @@ All core modules are implemented with 38 passing tests.
 ## Architecture
 
 ```
-src/
-├── app/
-│   ├── __init__.py          # Package init
-│   ├── config.py            # Settings + .env → config
-│   ├── models.py            # Pydantic models for API
-│   ├── time_utils.py        # Time utilities (ported from timestuff.h)
-│   ├── temperature.py       # DS18B20 + simulation
-│   ├── fader.py             # PWM soft-fader (ported from backlight_fader.cpp)
-│   ├── gpio_interface.py    # GPIO abstraction (RPi / Mock / Abstract)
-│   ├── crud.py              # CRUD → pickle persistence
-│   ├── email_sender.py      # SMTP email with CSV attachments
-│   ├── scheduler.py         # Schedule engine + GPIO control
-│   └── main.py              # FastAPI app + background loop
-├── emulator/
-│   ├── __init__.py
-│   └── gpio_emulator.py     # Re-exports MockGPIOController
-├── static/
-│   └── index.html           # Dashboard frontend (tabs: Status, Schedule, Params, Temp)
-├── tests/
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── test_config.py       # 5 tests
-│   ├── test_crud.py         # 7 tests
-│   ├── test_fader.py        # 6 tests
-│   ├── test_gpio.py         # 6 tests
-│   ├── test_models.py       # 4 tests
-│   ├── test_temperature.py  # 4 tests
-│   └── test_time_utils.py   # 6 tests
-├── data/                    # (auto-created) pickle storage
-├── requirements.txt
-├── .env / .env.example
-└── implementation_plan.md
+app/
+├── __init__.py          # Package init
+├── config.py            # Settings + .env → config
+├── models.py            # Pydantic models for API
+├── time_utils.py        # Time utilities (ported from timestuff.h)
+├── temperature.py       # DS18B20 + simulation
+├── fader.py             # PWM soft-fader (ported from backlight_fader.cpp)
+├── gpio_interface.py    # GPIO abstraction (RPi / Mock / Abstract)
+├── crud.py              # CRUD → pickle persistence
+├── email_sender.py      # SMTP email with CSV attachments
+├── scheduler.py         # Schedule engine + GPIO control
+└── main.py              # FastAPI app + background loop
+emulator/
+├── __init__.py
+└── gpio_emulator.py     # Re-exports MockGPIOController
+static/
+├── index.html           # Root redirect / navigation hub
+├── light.html           # Direct light/device control (port of html4light.h)
+├── schedule.html        # Schedule editor + SVG graph (port of htmltemplate.h)
+├── settings.html        # Parameter settings form (port of htmlsettings.h)
+└── temperature.html     # Temperature SVG chart (port of temperaturesvgpage.h)
+tests/
+├── __init__.py
+├── conftest.py
+├── test_config.py       # 5 tests
+├── test_crud.py         # 7 tests
+├── test_fader.py        # 6 tests
+├── test_gpio.py         # 6 tests
+├── test_models.py       # 4 tests
+├── test_temperature.py  # 4 tests
+└── test_time_utils.py   # 6 tests
+data/                    # (auto-created) pickle storage
+requirements.txt
+.env / .env.example
+implementation_plan.md
 ```
 
 ## Key Design Decisions
@@ -64,6 +67,12 @@ src/
    - `state=True` → pin LOW (relay ON)
    - `state=False` → pin HIGH (relay OFF)
 
+6. **HTML Pages**: Separate static HTML files faithfully ported from original ESP8266 templates.
+   - Light theme, Arial font, German labels (as in original)
+   - Pages served at same routes as original ESP8266
+   - API endpoints use RESTful `/api/...` paths
+   - Navigation bar with 8 tabs matching original
+
 ## REST API Endpoints
 
 | Method | Path | Description |
@@ -78,6 +87,19 @@ src/
 | GET | `/api/temperature/csv` | Download temperature CSV |
 | GET | `/api/temperature/current` | Current temperature |
 | GET | `/api/light-levels` | Available light levels |
+
+## Static HTML Routes
+
+| Method | Path | Source File | Description |
+|--------|------|-------------|-------------|
+| GET | `/` or `/index.html` | static/index.html | Navigation hub |
+| GET | `/light` | static/light.html | Device control (port of html4light.h) |
+| GET | `/schedule` | static/schedule.html | Schedule editor (port of htmltemplate.h) |
+| GET | `/settings` | static/settings.html | Parameter settings (port of htmlsettings.h) |
+| GET | `/info` | static/temperature.html | Temperature chart (port of temperaturesvgpage.h) |
+| GET | `/csv` | Redirect | CSV download |
+| GET | `/email` | static/light.html | Email trigger action |
+| GET | `/ram` | static/light.html | RAM info (returned as text) |
 
 ## Run
 

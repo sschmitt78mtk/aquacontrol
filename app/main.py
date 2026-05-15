@@ -154,14 +154,82 @@ if os.path.isdir(static_dir):
 
 # ========== REST API Endpoints ==========
 
+# ========== HTML Page Routes (matching original ESP8266) ==========
+
+def _read_static_file(filename: str) -> str:
+    """Read a static HTML file and return its content."""
+    path = os.path.join(static_dir, filename)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        logger.warning(f"Static file not found: {path}")
+        return f"<html><body><h1>404 - {filename} not found</h1></body></html>"
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Redirect to static dashboard."""
-    return HTMLResponse("""
-    <!DOCTYPE html>
-    <html><head><meta http-equiv="refresh" content="0;url=/static/index.html"></head>
-    <body><a href="/static/index.html">Dashboard</a></body></html>
-    """)
+    """Serve main navigation hub (index.html)."""
+    return HTMLResponse(content=_read_static_file("index.html"))
+
+
+@app.get("/light", response_class=HTMLResponse)
+async def light_page():
+    """Serve light/device control page (port of html4light.h)."""
+    return HTMLResponse(content=_read_static_file("light.html"))
+
+
+@app.get("/schedule", response_class=HTMLResponse)
+async def schedule_page():
+    """Serve schedule editor page (port of htmltemplate.h)."""
+    return HTMLResponse(content=_read_static_file("schedule.html"))
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page():
+    """Serve parameter settings page (port of htmlsettings.h)."""
+    return HTMLResponse(content=_read_static_file("settings.html"))
+
+
+@app.get("/info", response_class=HTMLResponse)
+async def info_page():
+    """Serve temperature history chart page (port of temperaturesvgpage.h)."""
+    return HTMLResponse(content=_read_static_file("temperature.html"))
+
+
+@app.get("/email", response_class=HTMLResponse)
+async def email_page():
+    """Send an email (reboot notification) and show status."""
+    try:
+        result = emailer.send_email(is_reboot=False)
+        if result:
+            return HTMLResponse("<html><body><h1>Email sent successfully</h1><a href='/'>Back</a></body></html>")
+        else:
+            return HTMLResponse("<html><body><h1>Email not sent (check settings or skipmail)</h1><a href='/'>Back</a></body></html>")
+    except Exception as e:
+        logger.error(f"[EMAIL] Error: {e}")
+        return HTMLResponse(f"<html><body><h1>Email error: {e}</h1><a href='/'>Back</a></body></html>")
+
+
+@app.get("/ram", response_class=HTMLResponse)
+async def ram_page():
+    """Show RAM info (replacement for ESP8266.getFreeHeap())."""
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        info = (
+            f"<h1>System RAM Info</h1>"
+            f"<p>Total: {mem.total // (1024*1024)} MB</p>"
+            f"<p>Available: {mem.available // (1024*1024)} MB</p>"
+            f"<p>Used: {mem.used // (1024*1024)} MB</p>"
+            f"<p>Percent: {mem.percent}%</p>"
+            f"<a href='/'>Back</a>"
+        )
+        return HTMLResponse(f"<html><body>{info}</body></html>")
+    except ImportError:
+        return HTMLResponse("<html><body><h1>psutil not installed - install with: pip install psutil</h1><a href='/'>Back</a></body></html>")
+
+
 
 
 @app.get("/api/status", response_model=StatusResponse)
