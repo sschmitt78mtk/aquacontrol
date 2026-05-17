@@ -1,0 +1,13 @@
+# /etc/systemd/system/aquacontrol.service
+[Unit]
+Description=aquacontrol FastAPI Service
+After=network.target
+
+[Service]
+ExecStart=/home/sascha/aquacontrol/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080
+WorkingDirectory=/home/sascha/aquacontrol
+Restart=on-failure
+User=sascha
+
+[Install]
+WantedBy=multi-user.target
