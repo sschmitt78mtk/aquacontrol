@@ -1,5 +1,7 @@
 # AquaControl – Raspberry Pi Zero Aquarium Controller
 
+# Porting to Raspberry still in progress !!!
+
 A Python/FastAPI port of the [ESP8266 aquarium controller](https://github.com/sschmitt78mtk/aquacontrol/tree/ESP8266), running on a Raspberry Pi Zero. Controls lighting (PWM + relay), cooling fans, CO2, and moonlight on a schedule, monitors water temperature via DS18B20, and sends email alerts and weekly reports with CSV attachments.
 
 ## Features
