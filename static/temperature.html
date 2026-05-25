@@ -49,7 +49,7 @@
     </style>
 </head>
 <body>
-    <h1>Temperaturverlauf V4</h1>
+    <h1>Temperaturverlauf V4 RPi</h1>
     <div id="graph" class="graph" style="position: relative;"></div>
     <nav class="tab-navigation">
         <ul class="tab-container">
@@ -263,16 +263,20 @@
         `;
         document.getElementById('graph').appendChild(tooltip);
 
-        // Mausbewegung verfolgen
-        svg.addEventListener('mousemove', (e) => {
-            // Mausposition relativ zum SVG
+        // Hilfsfunktion: Tooltip an Bildschirmposition anzeigen
+        function showTooltipAt(clientX, clientY) {
             const rect = svg.getBoundingClientRect();
-            const x = e.clientX - rect.left - margin;
-            const y = e.clientY - rect.top;
+            const scaleX = width / rect.width;
+            const scaleY = height / rect.height;
+            const viewBoxX = (clientX - rect.left) * scaleX;
+            const viewBoxY = (clientY - rect.top) * scaleY;
+            const x = viewBoxX - margin;
+            const y = viewBoxY;
 
             // Nur innerhalb des Diagrammbereichs
             if(x < 0 || x > (width - 2*margin) || y < margin || y > (height - margin)) {
                 tooltip.style.opacity = '0';
+                highlight.style.display = "none";
                 return;
             }
 
@@ -299,13 +303,39 @@
             // Tooltip anzeigen
             tooltip.style.opacity = '1';
             tooltip.textContent = `${timeStr} Uhr - ${data[index].temp.toFixed(1)}°C`;
-            tooltip.style.left = `${e.clientX + 10}px`;
-            tooltip.style.top = `${e.clientY + 10}px`;
+            tooltip.style.left = `${clientX + 10}px`;
+            tooltip.style.top = `${clientY + 10}px`;
+        }
+
+        function hideTooltip() {
+            tooltip.style.opacity = '0';
+            highlight.style.display = "none";
+        }
+
+        // Mausbewegung verfolgen
+        svg.addEventListener('mousemove', (e) => {
+            showTooltipAt(e.clientX, e.clientY);
         });
 
         svg.addEventListener('mouseleave', () => {
-            tooltip.style.opacity = '0';
-            highlight.style.display = "none";
+            hideTooltip();
+        });
+
+        // Touch-Events für mobile Geräte
+        svg.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            showTooltipAt(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        svg.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            showTooltipAt(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        svg.addEventListener('touchend', () => {
+            hideTooltip();
         });
     }
 
