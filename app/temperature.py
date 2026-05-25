@@ -22,12 +22,22 @@ class TemperatureController:
 
     def __init__(self):
         self._last_temp = 25.0
+        self._base_temp = 25.0
+        self._call_counter = 0
 
     def read(self) -> float:
         """Read current temperature. Returns float in °C."""
         settings = get_settings()
         if settings.simulateSensor:
-            self._last_temp = round(random.uniform(19, 35), 1)
+            self._call_counter += 1
+
+            # Every 10 calls, update the base temperature with a larger drift
+            if self._call_counter % 10 == 1:
+                self._base_temp += random.uniform(-0.5, 0.5)
+                self._base_temp = max(22.0, min(30.0, self._base_temp))
+
+            # Every call: add small jitter (±0.1°C) to the base
+            self._last_temp = round(self._base_temp + random.uniform(-0.1, 0.1), 1)
         else:
             self._last_temp = self._read_ds18b20()
         return self._last_temp

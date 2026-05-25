@@ -35,11 +35,27 @@ def test_roundtrip():
 
 
 def test_temperature_controller_simulated():
-    """Test TemperatureController in simulation mode."""
+    """Test TemperatureController in simulation mode with drift + jitter."""
     settings = get_settings()
     settings.simulateSensor = True
 
     ctrl = TemperatureController()
-    temp = ctrl.read()
-    assert 19.0 <= temp <= 35.0, f"Temperature {temp} out of range"
-    assert ctrl.current == temp
+    temps = []
+    for _ in range(20):
+        t = ctrl.read()
+        # The .current property should return the value just read
+        assert ctrl.current == t, f".current ({ctrl.current}) != read() ({t})"
+        temps.append(t)
+
+    # All values should be in a realistic range
+    for t in temps:
+        assert 21.0 <= t <= 31.0, f"Temperature {t} out of realistic range"
+
+    # Consecutive readings should not jump more than 0.6°C
+    # (max drift 0.5 + max jitter 0.1 = 0.6)
+    for i in range(1, len(temps)):
+        diff = abs(temps[i] - temps[i-1])
+        assert diff <= 0.6, f"Temperature jump too large: {temps[i-1]} -> {temps[i]} ({diff}°C)"
+
+    # Over 20 readings, there should be some variation (not all identical)
+    assert len(set(temps)) > 1, "Temperatures should vary over multiple readings"

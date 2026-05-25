@@ -54,6 +54,9 @@ def test_temperature_history(crud):
 def test_temperature_csv(crud):
     """Test CSV generation."""
     import time
+    # Use a fresh TemperatureHistory to avoid index offset from loaded pickle data
+    from app.crud import TemperatureHistory
+    crud.temperature = TemperatureHistory()
     ts = int(time.time())
     crud.add_temperature_entry(ts, 25.0)
     crud.add_temperature_entry(ts + 60, 26.5)
@@ -92,7 +95,8 @@ def test_schedule_entry_dataclass():
 
 def test_temperature_history_dataclass():
     """Test TemperatureHistory dataclass."""
+    from app.crud import HISTORY_SIZE
     th = TemperatureHistory()
-    assert len(th.timestamps) == 700
-    assert len(th.history) == 700
+    assert len(th.timestamps) == HISTORY_SIZE
+    assert len(th.history) == HISTORY_SIZE
     assert th.index == 0
