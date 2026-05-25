@@ -406,6 +406,10 @@
         form.querySelectorAll('input[type="text"], input[type="number"], input[type="password"]').forEach(function(input) {
             if (input.name) {
                 var val = input.value;
+                // Skip password fields that still contain the masked placeholder
+                if (input.type === 'password' && val.includes('...')) {
+                    return; // Don't send - keep current value
+                }
                 if (val === '') val = null;
                 data[input.name] = val;
             }

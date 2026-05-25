@@ -57,13 +57,14 @@ def get_settings() -> Settings:
 
 
 def load_credentials() -> dict[str, str | int]:
-    """Load SMTP and other credentials from .env file."""
+    """Load SMTP credentials - Settings (web UI) takes priority over .env."""
+    settings = get_settings()
     return {
         "smtp_host": os.getenv("SMTP_HOST", "smtp.gmail.com"),
         "smtp_port": int(os.getenv("SMTP_PORT", "465")),
-        "smtp_auth_email": os.getenv("SMTP_AUTH_EMAIL", ""),
-        "smtp_auth_password": os.getenv("SMTP_AUTH_PASSWORD", ""),
-        "recipient_email": os.getenv("RECIPIENT_EMAIL", ""),
+        "smtp_auth_email": settings.smtp_AUTH_EMAIL or os.getenv("SMTP_AUTH_EMAIL", ""),
+        "smtp_auth_password": settings.smtp_AUTH_PASSWORD or os.getenv("SMTP_AUTH_PASSWORD", ""),
+        "recipient_email": settings.smtp_RECIPIENT_EMAIL or os.getenv("RECIPIENT_EMAIL", ""),
         "ntp_server": os.getenv("NTP_SERVER", "fritz.box"),
         "secret_key": os.getenv("SECRET_KEY", ""),
     }

@@ -30,6 +30,13 @@ from app.email_sender import EmailSender
 from app.crud import get_crud, ScheduleEntry
 from app.time_utils import get_formatted_date, get_esp_day_of_week, adjust_for_dst
 
+
+def _mask_password(value: str) -> str:
+    """Mask a password showing only first 3 and last 3 characters."""
+    if len(value) <= 6:
+        return value
+    return value[:3] + "..." + value[-3:]
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -267,8 +274,13 @@ async def api_status():
 
 @app.get("/api/parameters")
 async def api_get_parameters():
-    """Get all system parameters."""
-    return settings_to_dict()
+    """Get all system parameters (passwords masked)."""
+    params = settings_to_dict()
+    # Mask sensitive fields
+    for key in ("smtp_AUTH_PASSWORD", "password"):
+        if key in params:
+            params[key] = _mask_password(params[key])
+    return params
 
 
 @app.post("/api/parameters")

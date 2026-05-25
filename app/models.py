@@ -52,3 +52,11 @@ class ParameterUpdateRequest(BaseModel):
     weeklyReport_tm_wday: Optional[int] = None
     weeklyReport_tm_hour: Optional[int] = None
     weeklyReport_tm_min: Optional[int] = None
+    # Network settings
+    ssid: Optional[str] = None
+    password: Optional[str] = None
+    ntpServer: Optional[str] = None
+    # Email settings
+    smtp_AUTH_EMAIL: Optional[str] = None
+    smtp_AUTH_PASSWORD: Optional[str] = None
+    smtp_RECIPIENT_EMAIL: Optional[str] = None
