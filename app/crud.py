@@ -16,7 +16,7 @@ SETTINGS_FILE = os.path.join(DATA_DIR, "settings.pickle")
 SCHEDULE_FILE = os.path.join(DATA_DIR, "schedule.pickle")
 TEMPERATURE_FILE = os.path.join(DATA_DIR, "temperature.pickle")
 
-HISTORY_SIZE = 700
+HISTORY_SIZE = 3000 # ~ 4 Weeks
 LOG_ENTRY_SIZE = 5  # 4 bytes timestamp + 1 byte temp deviation
 
 
