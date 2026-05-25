@@ -1,4 +1,25 @@
-"""Temperature module - port of ESP8266 temperature reading + conversion."""
+"""Temperature module - port of ESP8266 temperature reading + conversion.
+
+DS18B20 Sensor Pin Configuration
+---------------------------------
+The DS18B20 temperature sensor is accessed via the Linux 1-Wire kernel subsystem
+at /sys/bus/w1/devices/28-*/w1_slave. This means the pin is NOT configured in
+this application — it is set at the Raspberry Pi OS level.
+
+On a standard Raspberry Pi, the 1-Wire interface uses GPIO4 (BCM pin 7).
+To use a different GPIO pin, edit /boot/config.txt (or /boot/firmware/config.txt
+on newer systems) and add/change:
+
+    dtoverlay=w1-gpio,gpiopin=17
+
+(replace 17 with your desired BCM GPIO number)
+
+Then reboot for the change to take effect.
+
+If you have multiple DS18B20 sensors on the bus, the code will use the first
+one found. To select a specific sensor, you could modify _read_ds18b20() to
+filter by a known device ID (e.g., 28-xxxxxxxxxxxx).
+"""
 
 import random
 import glob
@@ -43,7 +64,12 @@ class TemperatureController:
         return self._last_temp
 
     def _read_ds18b20(self) -> float:
-        """Read temperature from DS18B20 on RPi via w1 interface."""
+        """Read temperature from DS18B20 on RPi via w1 interface.
+
+        This uses the Linux 1-Wire kernel driver, NOT direct GPIO access.
+        The GPIO pin for the 1-Wire bus is configured in /boot/config.txt
+        via the w1-gpio overlay (see module docstring for details).
+        """
         try:
             base_dirs = glob.glob("/sys/bus/w1/devices/28-*/w1_slave")
             if not base_dirs:

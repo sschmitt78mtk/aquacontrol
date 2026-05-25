@@ -7,18 +7,22 @@ Pin mapping (from ESP8266):
   RELAYCO2_PIN    = 2  (GPIO2 / D4 on RPi)
   RELAYMOON_PIN   = 4  (GPIO4 / D5 on RPi)
   COOLING_OFF_PIN = 0  (GPIO0 / D0 on RPi) - water level sensor
-  ONE_WIRE_BUS    = 7  (GPIO7 / D6 on RPi) - DS18B20
+
+NOTE: The DS18B20 temperature sensor is NOT controlled via GPIO in this code.
+It uses the Linux 1-Wire kernel driver (/sys/bus/w1/devices/28-*/w1_slave).
+The 1-Wire pin is configured in /boot/config.txt via the w1-gpio overlay
+(default: GPIO4). See app/temperature.py for details.
 """
 
 from abc import ABC, abstractmethod
 
 # Pin definitions (RPi BCM numbering)
-LIGHT_PWMPIN = 5
-COOLING_PWMPIN = 6
-RELAYLIGHT_PIN = 1
-RELAYCO2_PIN = 2
-RELAYMOON_PIN = 4
-COOLING_OFF_PIN = 0
+LIGHT_PWMPIN = 12
+COOLING_PWMPIN = 13
+RELAYLIGHT_PIN = 5
+RELAYCO2_PIN = 6
+RELAYMOON_PIN = 16
+COOLING_OFF_PIN = 26
 
 # Device identifiers (same as ESP8266)
 DEVICE_PWMLIGHT = 0
