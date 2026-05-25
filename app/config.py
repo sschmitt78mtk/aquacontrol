@@ -33,9 +33,7 @@ class Settings:
     weeklyReport_tm_hour: int = 22
     weeklyReport_tm_min: int = 0
 
-    # Network settings (loaded from .env but also persisted in pickle)
-    ssid: str = ""
-    password: str = ""
+    # Network settings
     ntpServer: str = "fritz.box"
 
     # Email settings (loaded from .env but also persisted in pickle)

@@ -91,8 +91,6 @@
           document.querySelector('[name="weeklyReport_tm_min"]').value = data.weeklyReport_tm_min ?? '';
           
           // Netzwerk
-          document.querySelector('[name="ssid"]').value = data.ssid || '';
-          document.querySelector('[name="password"]').value = data.password || '';
           document.querySelector('[name="ntpServer"]').value = data.ntpServer || '';
           
           // E-Mail
@@ -122,26 +120,6 @@
     }
 
     function initializePasswordToggles() {
-      // WiFi Passwort Toggle
-      const wifiPasswordInput = document.querySelector('[name="password"]');
-      if (wifiPasswordInput) {
-        const wifiContainer = document.createElement('div');
-        wifiContainer.className = 'password-container';
-        wifiPasswordInput.parentNode.insertBefore(wifiContainer, wifiPasswordInput);
-        wifiContainer.appendChild(wifiPasswordInput);
-        wifiPasswordInput.className = 'password-input';
-        wifiPasswordInput.type = 'password';
-        wifiPasswordInput.id = 'wifiPassword';
-        
-        const wifiToggle = document.createElement('button');
-        wifiToggle.type = 'button';
-        wifiToggle.className = 'toggle-password';
-        wifiToggle.innerHTML = '👁️';
-        wifiToggle.title = 'Passwort anzeigen';
-        wifiToggle.onclick = () => togglePasswordVisibility('wifiPassword', wifiToggle);
-        wifiContainer.appendChild(wifiToggle);
-      }
-
       // SMTP Passwort Toggle
       const smtpPasswordInput = document.querySelector('[name="smtp_AUTH_PASSWORD"]');
       if (smtpPasswordInput) {
@@ -321,19 +299,6 @@
         <h3>Netzwerk Einstellungen</h3>
         <table class="param-table">
           <tr>
-            <td class="param-label">WiFi SSID:</td>
-            <td class="param-value">
-              <input type="text" name="ssid" placeholder="fritzzzz">
-            </td>
-          </tr>
-          <tr>
-            <td class="param-label">WiFi Passwort:</td>
-            <td class="param-value">
-              <!-- Container wird per JavaScript hinzugefügt -->
-              <input type="password" name="password" placeholder="51...0">
-            </td>
-          </tr>
-          <tr>
             <td class="param-label">NTP Server:</td>
             <td class="param-value">
               <input type="text" name="ntpServer" placeholder="fritz.box">
@@ -447,14 +412,6 @@
         });
     }
 
-    function validateForm() {
-      const ssid = document.querySelector('[name="ssid"]').value;
-      if (!ssid) {
-        alert('Bitte WiFi SSID eingeben');
-        return false;
-      }
-      return true;
-    }
   </script>
 </body>
 </html>

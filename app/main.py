@@ -277,7 +277,7 @@ async def api_get_parameters():
     """Get all system parameters (passwords masked)."""
     params = settings_to_dict()
     # Mask sensitive fields
-    for key in ("smtp_AUTH_PASSWORD", "password"):
+    for key in ("smtp_AUTH_PASSWORD",):
         if key in params:
             params[key] = _mask_password(params[key])
     return params
