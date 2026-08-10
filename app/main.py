@@ -55,6 +55,10 @@ gpio = get_gpio()
 scheduler = Scheduler(gpio, light_fader, cooling_fader)
 emailer = EmailSender()
 
+# Debug switch: force fish-safe mode at startup without changing the system clock.
+# Set to True while testing invalid-time startup behavior, then set back to False.
+SIMULATE_INVALID_TIME = False
+
 # Background loop control
 _background_task: asyncio.Task | None = None
 _run_background = True
@@ -103,7 +107,7 @@ def initialize_startup_mode() -> None:
     """Load persistent state and select normal or fish-safe startup exactly once."""
     global _fish_safe_mode
     get_crud().load_all()
-    _fish_safe_mode = not is_ntp_synchronized()
+    _fish_safe_mode = SIMULATE_INVALID_TIME or not is_ntp_synchronized()
     if _fish_safe_mode:
         scheduler.start_fish_safe_mode()
         return

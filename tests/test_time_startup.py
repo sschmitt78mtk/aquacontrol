@@ -25,6 +25,22 @@ def test_ntp_not_synchronized_for_no_or_unavailable_timedatectl():
         assert is_ntp_synchronized() is False
 
 
+
+def test_simulate_invalid_time_forces_fish_safe_startup():
+    from app import main
+
+    with patch("app.main.SIMULATE_INVALID_TIME", True), \
+         patch("app.main.is_ntp_synchronized") as ntp_check, \
+         patch.object(main, "get_crud") as get_crud, \
+         patch.object(main.scheduler, "start_fish_safe_mode") as start_fish_safe:
+        main.initialize_startup_mode()
+
+    assert main._fish_safe_mode is True
+    ntp_check.assert_not_called()
+    get_crud.return_value.load_all.assert_called_once_with()
+    start_fish_safe.assert_called_once_with()
+
+
 def test_set_system_time_calls_restricted_timedatectl_command():
     with patch("app.main.subprocess.run", return_value=Mock(returncode=0)) as run:
         set_system_time("2026-08-10T14:35")
