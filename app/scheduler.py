@@ -4,11 +4,10 @@ Controls PWM and relay devices based on schedule entries."""
 
 import time
 import logging
-from datetime import datetime
 
 from app.config import get_settings
 from app.gpio_interface import (
-    get_gpio, LIGHT_PWMPIN, COOLING_PWMPIN,
+    LIGHT_PWMPIN, COOLING_PWMPIN,
     RELAYLIGHT_PIN, RELAYCO2_PIN, RELAYMOON_PIN,
     COOLING_OFF_PIN,
     DEVICE_PWMLIGHT, DEVICE_COOLING, DEVICE_LIGHT,
@@ -24,16 +23,89 @@ logger = logging.getLogger(__name__)
 class Scheduler:
     """Scheduler checks schedule entries and controls devices."""
 
+    FISH_SAFE_LIGHT_ON_SECONDS = 10 * 60 * 60
+    FISH_SAFE_CYCLE_SECONDS = 24 * 60 * 60
+    # Whole-second durations retain the existing one-second application loop.
+    # Each item is (moonlight on, duration in seconds): ...---... then pause.
+    FISH_SAFE_SOS_PATTERN = (
+        (True, 1), (False, 1), (True, 1), (False, 1), (True, 1), (False, 1),
+        (True, 3), (False, 1), (True, 3), (False, 1), (True, 3), (False, 1),
+        (True, 1), (False, 1), (True, 1), (False, 1), (True, 1), (False, 4),
+    )
+    FISH_SAFE_SOS_CYCLE_SECONDS = sum(duration for _, duration in FISH_SAFE_SOS_PATTERN)
+
     def __init__(self, gpio: GPIOController, light_fader: PWMFader, cooling_fader: PWMFader):
         self._gpio = gpio
         self._light_fader = light_fader
         self._cooling_fader = cooling_fader
         self._cooling_shutoff_time: float = 0.0  # monotonic time when cooling should shut off
+        self._fish_safe_started_at: float | None = None
+        self._fish_safe_light_on: bool | None = None
+        self._fish_safe_moon_on: bool | None = None
 
     def set_relay(self, pin: int, state: bool):
         """Set relay with active-LOW logic (same as ESP8266 setRelay).
         state=True -> relay ON (pin LOW), state=False -> relay OFF (pin HIGH)"""
         self._gpio.set_digital(pin, not state)  # active LOW
+
+    def start_fish_safe_mode(self):
+        """Start the clock-invalid emergency mode.
+
+        CO2 and all PWM outputs are forced off. The main light is immediately
+        on for ten hours of each monotonic 24-hour cycle; moonlight signals SOS.
+        """
+        if self._fish_safe_started_at is None:
+            self._fish_safe_started_at = time.monotonic()
+            logger.warning("[FISH-SAFE] NTP was not synchronized at startup")
+        self._cooling_shutoff_time = 0.0
+        self._light_fader.init()
+        self._cooling_fader.init()
+        self._gpio.set_digital(LIGHT_PWMPIN, False)
+        self._gpio.set_digital(COOLING_PWMPIN, False)
+        self.set_relay(RELAYCO2_PIN, False)
+        self.update_fish_safe_mode()
+
+    def stop_fish_safe_mode(self):
+        """Stop emergency outputs before normal schedule restoration."""
+        self._fish_safe_started_at = None
+        self._fish_safe_light_on = None
+        self._fish_safe_moon_on = None
+        self.set_relay(RELAYLIGHT_PIN, False)
+        self.set_relay(RELAYCO2_PIN, False)
+        self.set_relay(RELAYMOON_PIN, False)
+
+    def update_fish_safe_mode(self):
+        """Apply fish-safe outputs for the current monotonic elapsed time."""
+        if self._fish_safe_started_at is None:
+            raise RuntimeError("Fish-safe mode has not been started")
+
+        elapsed_seconds = int(time.monotonic() - self._fish_safe_started_at)
+        light_on = elapsed_seconds % self.FISH_SAFE_CYCLE_SECONDS < self.FISH_SAFE_LIGHT_ON_SECONDS
+        moon_on = self._fish_safe_sos_state(elapsed_seconds)
+
+        # Enforce the safety constraints on every loop pass.
+        self._light_fader.init()
+        self._cooling_fader.init()
+        self._gpio.set_digital(LIGHT_PWMPIN, False)
+        self._gpio.set_digital(COOLING_PWMPIN, False)
+        self.set_relay(RELAYCO2_PIN, False)
+
+        if light_on != self._fish_safe_light_on:
+            self.set_relay(RELAYLIGHT_PIN, light_on)
+            self._fish_safe_light_on = light_on
+            logger.info("[FISH-SAFE] Main light %s", "ON" if light_on else "OFF")
+        if moon_on != self._fish_safe_moon_on:
+            self.set_relay(RELAYMOON_PIN, moon_on)
+            self._fish_safe_moon_on = moon_on
+
+    def _fish_safe_sos_state(self, elapsed_seconds: int) -> bool:
+        """Return the moonlight state for the repeating whole-second SOS signal."""
+        position = elapsed_seconds % self.FISH_SAFE_SOS_CYCLE_SECONDS
+        for state, duration in self.FISH_SAFE_SOS_PATTERN:
+            if position < duration:
+                return state
+            position -= duration
+        return False
 
     def check_schedule(self, hour: int, minute: int):
         """Check if any schedule entries match the given time and execute them."""

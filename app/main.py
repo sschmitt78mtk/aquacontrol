@@ -4,13 +4,16 @@ Replaces the ESP8266 HTTP server with FastAPI + uvicorn.
 Provides REST API + serves static frontend files."""
 
 import asyncio
+import html
 import logging
 import os
+import subprocess
+from urllib.parse import parse_qs
 from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings, settings_to_dict, update_settings_from_dict
@@ -56,24 +59,83 @@ emailer = EmailSender()
 _background_task: asyncio.Task | None = None
 _run_background = True
 _prev_minute = -1
+_fish_safe_mode = False
+_manual_time_set = asyncio.Event()
+
+
+def is_ntp_synchronized() -> bool:
+    """Return whether systemd confirms NTP synchronization at application startup."""
+    try:
+        result = subprocess.run(
+            ["timedatectl", "show", "--property=NTPSynchronized", "--value"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and result.stdout.strip().lower() == "yes"
+
+
+def set_system_time(value: str) -> None:
+    """Set local system time from a validated HTML datetime-local value."""
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M")
+    except ValueError as error:
+        raise ValueError("Invalid date and time.") from error
+    if not 2024 <= parsed.year <= 2100:
+        raise ValueError("Year must be between 2024 and 2100.")
+
+    result = subprocess.run(
+        ["sudo", "/usr/bin/timedatectl", "set-time", parsed.strftime("%Y-%m-%d %H:%M:00")],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or "timedatectl failed"
+        raise RuntimeError(message)
+
+
+def initialize_startup_mode() -> None:
+    """Load persistent state and select normal or fish-safe startup exactly once."""
+    global _fish_safe_mode
+    get_crud().load_all()
+    _fish_safe_mode = not is_ntp_synchronized()
+    if _fish_safe_mode:
+        scheduler.start_fish_safe_mode()
+        return
+
+    now = datetime.now()
+    scheduler.set_outputs_according_to_schedule(now.hour, now.minute)
+    if get_settings().emailme:
+        emailer.send_email(is_reboot=True)
 
 
 async def background_loop():
     """Background loop running every ~1 second - port of ESP8266 loop()."""
-    global _prev_minute
+    global _fish_safe_mode, _prev_minute
     logger.info("[LOOP] Background loop started")
-    get_crud().load_all()
-
-    # Restore schedule on startup
-    now = datetime.now()
-    scheduler.set_outputs_according_to_schedule(now.hour, now.minute)
-
-    # Send reboot email if enabled
-    if get_settings().emailme:
-        emailer.send_email(is_reboot=True)
 
     while _run_background:
         try:
+            if _fish_safe_mode:
+                if not _manual_time_set.is_set():
+                    scheduler.update_fish_safe_mode()
+                    await asyncio.sleep(1)
+                    continue
+
+                # Solution B: manual confirmation has set the system clock.
+                scheduler.stop_fish_safe_mode()
+                now = datetime.now()
+                scheduler.set_outputs_according_to_schedule(now.hour, now.minute)
+                _prev_minute = -1
+                _fish_safe_mode = False
+                if get_settings().emailme:
+                    emailer.send_email(is_reboot=True)
+
             now = datetime.now()
             current_minute = now.hour * 60 + now.minute
 
@@ -133,6 +195,7 @@ async def background_loop():
 async def lifespan(app: FastAPI):
     """Application lifespan: start/stop background loop."""
     global _background_task
+    initialize_startup_mode()
     _background_task = asyncio.create_task(background_loop())
     yield
     global _run_background
@@ -161,6 +224,14 @@ if os.path.isdir(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
+@app.middleware("http")
+async def fish_safe_time_gate(request: Request, call_next):
+    """Expose only time entry while fish-safe startup mode is active."""
+    if _fish_safe_mode and request.url.path not in {"/set-time", "/favicon.ico"}:
+        return RedirectResponse(url="/set-time", status_code=307)
+    return await call_next(request)
+
+
 # ========== REST API Endpoints ==========
 
 # ========== HTML Page Routes (matching original ESP8266) ==========
@@ -174,6 +245,40 @@ def _read_static_file(filename: str) -> str:
     except FileNotFoundError:
         logger.warning(f"Static file not found: {path}")
         return f"<html><body><h1>404 - {filename} not found</h1></body></html>"
+
+
+@app.get("/set-time", response_class=HTMLResponse)
+async def set_time_page():
+    """Show the only page available while fish-safe startup mode is active."""
+    if not _fish_safe_mode:
+        return RedirectResponse(url="/", status_code=303)
+    return HTMLResponse(content=_read_static_file("set-time.html"))
+
+
+@app.post("/set-time", response_class=HTMLResponse)
+async def set_time_page_submit(request: Request):
+    """Accept local time, then allow normal startup without NTP."""
+    if not _fish_safe_mode:
+        return RedirectResponse(url="/", status_code=303)
+
+    form_data = parse_qs((await request.body()).decode("utf-8"))
+    value = form_data.get("local_time", [""])[0]
+    try:
+        set_system_time(value)
+    except (ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+        logger.error("[FISH-SAFE] Manual time setting failed: %s", error)
+        return HTMLResponse(
+            content=_read_static_file("set-time.html").replace("<!-- ERROR -->", html.escape(str(error))),
+            status_code=400,
+        )
+
+    logger.warning("[FISH-SAFE] System time was set manually; resuming normal schedule")
+    _manual_time_set.set()
+    return HTMLResponse(
+        "<html><head><meta http-equiv='refresh' content='2;url=/'></head>"
+        "<body><h1>Uhrzeit gesetzt</h1>"
+        "<p>Normalbetrieb wird gestartet. Bitte warten...</p></body></html>"
+    )
 
 
 @app.get("/", response_class=HTMLResponse)

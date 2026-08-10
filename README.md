@@ -130,6 +130,29 @@ The async `background_loop()` runs every ~1 second, matching the ESP8266 `loop()
 | Every minute | Check schedule, check max cooling time, check weekly report, check 23:00 auto-off |
 | Every `backupInterval_mins` minutes | Save all data to pickle files |
 
+## Startup Time Safety / Fish-Safe Mode
+
+At startup AquaControl calls `timedatectl show --property=NTPSynchronized --value` exactly once.
+If systemd does not report `yes`, normal schedule processing is not started. Instead, fish-safe mode is active:
+
+- CO₂ relay is forced **OFF** on every one-second loop pass.
+- PWM backlight and cooling PWM are forced **OFF**.
+- The main-light relay is **ON immediately for 10 hours**, then OFF for 14 hours; this monotonic 24-hour cycle repeats.
+- Moonlight emits an SOS pattern using whole-second dots and dashes, so no faster scheduler is needed.
+- Schedule, reports, automatic shutdown, temperature logging, and API control are unavailable until time is confirmed.
+
+While fish-safe mode is active, every route redirects to `/set-time`. Entering a correct local date/time on that page sets the Pi system clock and starts the normal schedule exactly once. This works without Internet or NTP, but the browser must be able to reach the Pi over a local network or access point.
+
+### Required permission for manual time entry
+
+The service runs as `sascha`, while setting system time requires root permission. Install the following restricted sudoers rule with `sudo visudo -f /etc/sudoers.d/aquacontrol-time`:
+
+```
+sascha ALL=(root) NOPASSWD: /usr/bin/timedatectl set-time *
+```
+
+Set the correct service user in place of `sascha` if needed, then verify the file mode is `0440`. This permission is intentionally restricted to `timedatectl set-time`; do not grant unrestricted passwordless sudo.
+
 ## Settings
 
 All settings mirror the original ESP8266 `parameter` struct:
