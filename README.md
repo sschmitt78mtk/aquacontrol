@@ -140,7 +140,7 @@ The async `background_loop()` runs every ~1 second, matching the ESP8266 `loop()
 
 ## Startup Time Safety / Fish-Safe Mode
 
-At startup AquaControl calls `timedatectl show --property=NTPSynchronized --value` exactly once.
+At startup AquaControl checks NTP via `timedatectl show --property=NTPSynchronized --value`.
 If systemd does not report `yes`, normal schedule processing is not started. Instead, fish-safe mode is active:
 
 - CO₂ relay is forced **OFF** on every one-second loop pass.
@@ -149,7 +149,7 @@ If systemd does not report `yes`, normal schedule processing is not started. Ins
 - Moonlight emits an SOS pattern using whole-second dots and dashes, so no faster scheduler is needed.
 - Schedule, reports, automatic shutdown, temperature logging, and API control are unavailable until time is confirmed.
 
-While fish-safe mode is active, every route redirects to `/set-time`. Entering a correct local date/time on that page sets the Pi system clock and starts the normal schedule exactly once. This works without Internet or NTP, but the browser must be able to reach the Pi over a local network or access point.
+While fish-safe mode is active, the controller re-checks NTP every 30 seconds and automatically resumes the normal schedule once the clock synchronizes (e.g. internet/NTP becoming reachable a few minutes after boot). Until then, every route redirects to `/set-time`; entering a correct local date/time on that page sets the Pi system clock via `sudo timedatectl set-time` and starts the normal schedule immediately. This manual fallback works without Internet or NTP, but the browser must be able to reach the Pi over a local network or access point.
 
 ### Required permission for manual time entry
 
@@ -223,6 +223,18 @@ python -m pytest tests/ -v
 3. Wire DS18B20 to GPIO4 / physical pin 7 (with 4.7kΩ pull-up)
 4. Wire relays with active-LOW logic (relay modules typically work this way)
 5. Run as a systemd service for auto-start on boot
+
+Start / Stop / Restart / Status
+```
+sudo systemctl start aquacontrol      # start now
+sudo systemctl stop aquacontrol       # stop now
+sudo systemctl restart aquacontrol    # stop + start (e.g. after code changes)
+sudo systemctl status aquacontrol     # see if it's running (active/inactive)
+
+sudo systemctl enable aquacontrol     # start at boot (already done above)
+sudo systemctl disable aquacontrol    # stop auto-start at boot
+
+```
 
 ## Temperature Data Storage
 

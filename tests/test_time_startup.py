@@ -67,3 +67,48 @@ def test_set_system_time_reports_timedatectl_failure():
     with patch("app.main.subprocess.run", side_effect=subprocess.TimeoutExpired("timedatectl", 10)):
         with pytest.raises(subprocess.TimeoutExpired):
             set_system_time("2026-08-10T14:35")
+
+
+def test_auto_recover_returns_true_when_ntp_available_after_interval():
+    from app import main
+    with patch.object(main, "_last_ntp_check", 0.0), \
+         patch("app.main.is_ntp_synchronized", return_value=True) as ntp_check:
+        result = main._should_auto_recover_from_fish_safe(30.0)
+        assert result is True
+        assert main._last_ntp_check == 30.0
+    ntp_check.assert_called_once_with()
+
+
+def test_auto_recover_skips_ntp_check_within_recheck_interval():
+    from app import main
+    with patch.object(main, "_last_ntp_check", 0.0), \
+         patch("app.main.is_ntp_synchronized") as ntp_check:
+        assert main._should_auto_recover_from_fish_safe(29.9) is False
+    ntp_check.assert_not_called()
+
+
+def test_auto_recover_disabled_when_simulate_invalid_time():
+    from app import main
+    with patch.object(main, "_last_ntp_check", 0.0), \
+         patch("app.main.SIMULATE_INVALID_TIME", True), \
+         patch("app.main.is_ntp_synchronized") as ntp_check:
+        assert main._should_auto_recover_from_fish_safe(100.0) is False
+    ntp_check.assert_not_called()
+
+
+def test_exit_fish_safe_mode_resumes_normal_schedule():
+    from app import main
+    main._fish_safe_mode = True
+    try:
+        with patch.object(main.scheduler, "stop_fish_safe_mode") as stop, \
+             patch.object(main.scheduler, "set_outputs_according_to_schedule") as set_outputs, \
+             patch.object(main, "get_settings") as get_settings, \
+             patch.object(main.emailer, "send_email") as send_email:
+            get_settings.return_value.emailme = True
+            main._exit_fish_safe_mode()
+        stop.assert_called_once_with()
+        set_outputs.assert_called_once()
+        send_email.assert_called_once_with(is_reboot=True)
+        assert main._fish_safe_mode is False
+    finally:
+        main._fish_safe_mode = False

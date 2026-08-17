@@ -8,6 +8,7 @@ import html
 import logging
 import os
 import subprocess
+import time
 from urllib.parse import parse_qs
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -59,6 +60,10 @@ emailer = EmailSender()
 # Set to True while testing invalid-time startup behavior, then set back to False.
 SIMULATE_INVALID_TIME = False
 
+# How often to re-check NTP while stuck in fish-safe mode (seconds).
+NTP_RECHECK_SECONDS = 30
+_last_ntp_check = 0.0
+
 # Background loop control
 _background_task: asyncio.Task | None = None
 _run_background = True
@@ -103,12 +108,41 @@ def set_system_time(value: str) -> None:
         raise RuntimeError(message)
 
 
+def _should_auto_recover_from_fish_safe(now_monotonic: float) -> bool:
+    """Return True once enough time has passed and NTP has become available.
+
+    Called periodically while stuck in fish-safe mode so the controller can
+    resume the normal schedule automatically when the clock synchronizes
+    (e.g. internet/NTP becoming reachable a few minutes after boot).
+    """
+    global _last_ntp_check
+    if SIMULATE_INVALID_TIME:
+        return False
+    if now_monotonic - _last_ntp_check < NTP_RECHECK_SECONDS:
+        return False
+    _last_ntp_check = now_monotonic
+    return is_ntp_synchronized()
+
+
+def _exit_fish_safe_mode() -> None:
+    """Resume the normal schedule after fish-safe startup (manual or NTP recovery)."""
+    global _fish_safe_mode, _prev_minute
+    scheduler.stop_fish_safe_mode()
+    now = datetime.now()
+    scheduler.set_outputs_according_to_schedule(now.hour, now.minute)
+    _prev_minute = -1
+    _fish_safe_mode = False
+    if get_settings().emailme:
+        emailer.send_email(is_reboot=True)
+
+
 def initialize_startup_mode() -> None:
     """Load persistent state and select normal or fish-safe startup exactly once."""
-    global _fish_safe_mode
+    global _fish_safe_mode, _last_ntp_check
     get_crud().load_all()
     _fish_safe_mode = SIMULATE_INVALID_TIME or not is_ntp_synchronized()
     if _fish_safe_mode:
+        _last_ntp_check = time.monotonic()
         scheduler.start_fish_safe_mode()
         return
 
@@ -127,18 +161,16 @@ async def background_loop():
         try:
             if _fish_safe_mode:
                 if not _manual_time_set.is_set():
-                    scheduler.update_fish_safe_mode()
-                    await asyncio.sleep(1)
-                    continue
-
-                # Solution B: manual confirmation has set the system clock.
-                scheduler.stop_fish_safe_mode()
-                now = datetime.now()
-                scheduler.set_outputs_according_to_schedule(now.hour, now.minute)
-                _prev_minute = -1
-                _fish_safe_mode = False
-                if get_settings().emailme:
-                    emailer.send_email(is_reboot=True)
+                    if _should_auto_recover_from_fish_safe(time.monotonic()):
+                        logger.warning("[FISH-SAFE] NTP synchronized; resuming normal schedule")
+                        _exit_fish_safe_mode()
+                    else:
+                        scheduler.update_fish_safe_mode()
+                        await asyncio.sleep(1)
+                        continue
+                else:
+                    # Manual confirmation has set the system clock via /set-time.
+                    _exit_fish_safe_mode()
 
             now = datetime.now()
             current_minute = now.hour * 60 + now.minute
