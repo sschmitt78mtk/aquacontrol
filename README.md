@@ -70,17 +70,25 @@ data/                      # (auto-created) pickle storage
 
 ## Pin Mapping
 
-| ESP8266 Pin | ESP8266 Function | RPi BCM Pin | RPi Function |
-|---|---|---|---|
-| D5 | PWM Light | GPIO5 | PWM Light |
-| D6 | PWM Cooling | GPIO6 | PWM Cooling |
-| D1 | Relay Light | GPIO1* | Relay Light (active-LOW) |
-| D2 | Relay CO2 | GPIO2* | Relay CO2 (active-LOW) |
-| LED_BUILTIN (D4) | Relay Moon | GPIO4 | Relay Moon (active-LOW) |
-| D0 | Water level sensor | GPIO0* | Water level (HIGH=ok, LOW=low) |
-| D7 | DS18B20 (1-Wire) | GPIO7 | DS18B20 (1-Wire sysfs) |
+| ESP8266 Pin | ESP8266 Function | RPi BCM Pin | RPi Physical Pin | RPi Function |
+|---|---|---|---|---|
+| D5 | PWM Light | GPIO12 | 32 | PWM Light |
+| D6 | PWM Cooling | GPIO13 | 33 | PWM Cooling |
+| D1 | Relay Light | GPIO5 | 29 | Relay Light (active-LOW) |
+| D2 | Relay CO2 | GPIO6 | 31 | Relay CO2 (active-LOW) |
+| LED_BUILTIN (D4) | Relay Moon | GPIO16 | 36 | Relay Moon (active-LOW) |
+| D0 | Water level sensor | GPIO26 | 37 | Water level (HIGH=ok, LOW=low) |
+| D7 | DS18B20 (1-Wire) | GPIO4 | 7 | DS18B20 (1-Wire sysfs, kernel w1-gpio overlay) |
 
-> ⚠️ **GPIO 0, 1, 2** are special-purpose on RPi (I2C, HAT EEPROM). Verify these pin assignments against your actual hardware wiring before deployment.
+> **GPIO4** is the default 1-Wire pin for the DS18B20. It is configured at the OS
+> level via the `w1-gpio` overlay (not in code) — `sudo raspi-config` →
+> Interface Options → 1-Wire → Enable. To use a different pin, add
+> `dtoverlay=w1-gpio,gpiopin=<pin>` to `/boot/config.txt`
+> (or `/boot/firmware/config.txt` on newer systems) and reboot.
+>
+> Multiple DS18B20 sensors share the same 1-Wire bus: connect them in parallel to
+> the same GPIO4 data line with a single 4.7kΩ pull-up to 3.3V. Each sensor
+> appears as its own `/sys/bus/w1/devices/28-xxxxxxxxxxxx/` device.
 
 ## Device Control Logic
 
@@ -212,7 +220,7 @@ python -m pytest tests/ -v
 
 1. Enable 1-Wire interface: `sudo raspi-config` → Interface Options → 1-Wire → Enable
 2. Install gpiozero: `pip install gpiozero` (or `RPi.GPIO`)
-3. Wire DS18B20 to GPIO7 (with 4.7kΩ pull-up)
+3. Wire DS18B20 to GPIO4 / physical pin 7 (with 4.7kΩ pull-up)
 4. Wire relays with active-LOW logic (relay modules typically work this way)
 5. Run as a systemd service for auto-start on boot
 
