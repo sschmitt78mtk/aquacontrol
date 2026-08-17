@@ -2,6 +2,8 @@
 
 import pickle
 import os
+import logging
+from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass, field
 
@@ -20,6 +22,23 @@ HISTORY_SIZE = 3000 # ~ 4 Weeks
 LOG_ENTRY_SIZE = 5  # 4 bytes timestamp + 1 byte temp deviation
 
 
+logger = logging.getLogger(__name__)
+
+
+def _timestamp_to_datetime(timestamp: int) -> Optional[datetime]:
+    """Convert a Unix timestamp to a datetime, or None if out of range.
+
+    datetime.fromtimestamp() raises ValueError/OverflowError/OSError for
+    timestamps outside the representable range (year < 1 or > 9999, NaN, inf).
+    Such values can end up in the temperature buffer when the Raspberry Pi's
+    clock is wrong (no RTC, delayed NTP), so guard against them here.
+    """
+    try:
+        return datetime.fromtimestamp(timestamp)
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
 @dataclass
 class ScheduleEntry:
     hour: int = 0
@@ -36,15 +55,20 @@ class TemperatureHistory:
     index: int = 0
 
     def to_csv(self) -> str:
-        """Generate CSV string with UTF-8 BOM."""
+        """Generate CSV string with UTF-8 BOM, skipping entries with invalid timestamps."""
         csv = "\ufefftimestamp;temp\n"
-        for i in range(HISTORY_SIZE):
-            idx = (self.index + i) % HISTORY_SIZE
-            if self.timestamps[idx] != 0:
-                from datetime import datetime
-                ts = datetime.fromtimestamp(self.timestamps[idx])
-                temp = temp_int2float(self.history[idx])
-                csv += f"{ts.strftime('%Y-%m-%d %H:%M:%S')};{temp:.1f}\n".replace('.', ',')
+        size = len(self.timestamps)
+        for i in range(size):
+            idx = (self.index + i) % size
+            timestamp = self.timestamps[idx]
+            if timestamp == 0:
+                continue
+            ts = _timestamp_to_datetime(timestamp)
+            if ts is None:
+                logger.warning("[CRUD] Skipping invalid timestamp %r at index %d", timestamp, idx)
+                continue
+            temp = temp_int2float(self.history[idx])
+            csv += f"{ts.strftime('%Y-%m-%d %H:%M:%S')};{temp:.1f}\n".replace('.', ',')
         return csv
 
 
@@ -103,12 +127,17 @@ class CrudManager:
 
     def add_temperature_entry(self, timestamp: int, temp: float):
         """Add a temperature reading to the circular buffer.
+
         Note: Does NOT auto-save to disk. The background loop handles
         periodic saves via save_all() at backupInterval_mins, matching
         the ESP8266 behavior where saveToEEPROM() is only called explicitly."""
+        if _timestamp_to_datetime(timestamp) is None:
+            logger.warning("[CRUD] Ignoring temperature entry with invalid timestamp %r", timestamp)
+            return
+        size = len(self.temperature.timestamps)
         self.temperature.timestamps[self.temperature.index] = timestamp
         self.temperature.history[self.temperature.index] = temp_float2int(temp)
-        self.temperature.index = (self.temperature.index + 1) % HISTORY_SIZE
+        self.temperature.index = (self.temperature.index + 1) % size
 
     def clear_temperature_history(self):
         self.temperature = TemperatureHistory()

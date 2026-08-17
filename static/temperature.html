@@ -345,7 +345,7 @@
         }
 
         // Automatisch ausführen
-        loadAndDrawGraph();
+        loadAndDrawGraph().catch(error => showError('Fehler beim Laden der Temperaturdaten: ' + error.message));
 		
 	// Event-Listener für Rechtsklick
 	document.getElementById('graph').addEventListener('contextmenu', function(e) {

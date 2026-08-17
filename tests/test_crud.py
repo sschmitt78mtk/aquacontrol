@@ -100,3 +100,36 @@ def test_temperature_history_dataclass():
     assert len(th.timestamps) == HISTORY_SIZE
     assert len(th.history) == HISTORY_SIZE
     assert th.index == 0
+
+
+def test_temperature_csv_skips_out_of_range_timestamp():
+    """CSV generation must not crash when the buffer contains an invalid timestamp."""
+    import time
+    th = TemperatureHistory()
+    th.timestamps[0] = int(time.time())
+    th.history[0] = 0  # 25.0 °C
+    th.timestamps[1] = 2 ** 40  # year > 9999 -> datetime.fromtimestamp() raises
+    th.history[1] = 0
+    th.index = 2
+
+    csv = th.to_csv()  # must not raise
+
+    assert csv.startswith("\ufeff")
+    assert "25,0" in csv  # valid entry still exported
+    assert len(csv.strip().splitlines()) == 2  # header + one valid data row
+
+
+def test_add_temperature_entry_skips_invalid_timestamp():
+    """Invalid timestamps must not be written into the circular buffer."""
+    import time
+    crud = CrudManager()
+    crud.temperature = TemperatureHistory()
+
+    crud.add_temperature_entry(2 ** 40, 25.0)  # out of range -> skipped
+    assert crud.temperature.index == 0
+    assert crud.temperature.timestamps[0] == 0
+
+    ts = int(time.time())
+    crud.add_temperature_entry(ts, 25.0)
+    assert crud.temperature.index == 1
+    assert crud.temperature.timestamps[0] == ts
