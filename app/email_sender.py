@@ -28,16 +28,16 @@ class EmailSender:
     def send_email(self, is_reboot: bool = False, is_alarm: bool = False) -> bool:
         """Send an email with temperature CSV attachment."""
         settings = get_settings()
-        if settings.skipmail:
-            logger.info("[EMAIL] skipmail=True - not sending")
+        if not settings.send_email:
+            logger.info("[EMAIL] send_email=False - not sending")
             return True
-
+        
         today = datetime.now().day
         if is_alarm:
             if self._alarm_sent_day == today:
                 logger.info("[EMAIL] Alarm already sent today - skipping")
                 return False
-
+        
         try:
             creds = load_credentials()
             msg = MIMEMultipart()

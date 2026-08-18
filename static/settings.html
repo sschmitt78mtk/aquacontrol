@@ -78,11 +78,17 @@
           document.querySelector('[name="maxcooling_mins"]').value = data.maxcooling_mins || '';
           
           // Checkboxen
-          document.querySelector('[name="simulateSensor"]').checked = data.simulateSensor || false;
-          document.querySelector('[name="emailme"]').checked = data.emailme || false;
-          document.querySelector('[name="skipmail"]').checked = data.skipmail || false;
-          document.querySelector('[name="serialout"]').checked = data.serialout || false;
-          document.querySelector('[name="measure"]').checked = data.measure || false;
+          var simulateSensorEl = document.querySelector('[name="simulateSensor"]');
+          if (simulateSensorEl) simulateSensorEl.checked = data.simulateSensor || false;
+          
+          var sendEmailEl = document.querySelector('[name="send_email"]');
+          if (sendEmailEl) sendEmailEl.checked = data.send_email || false;
+          
+          var serialoutEl = document.querySelector('[name="serialout"]');
+          if (serialoutEl) serialoutEl.checked = data.serialout || false;
+          
+          var measureEl = document.querySelector('[name="measure"]');
+          if (measureEl) measureEl.checked = data.measure || false;
           
           // Technische Einstellungen
           document.querySelector('[name="pwmfrequency"]').value = data.pwmfrequency || '';
@@ -224,20 +230,11 @@
             </td>
           </tr>
           <tr>
-            <td class="param-label">E-Mails verschicken:</td>
+            <td class="param-label">E-Mails versenden:</td>
             <td class="param-value">
               <div class="checkbox-group">
-                <input type="checkbox" name="emailme" id="emailme">
-                <label for="emailme">Aktivieren</label>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td class="param-label">E-Mails nur simulieren:</td>
-            <td class="param-value">
-              <div class="checkbox-group">
-                <input type="checkbox" name="skipmail" id="skipmail">
-                <label for="skipmail">Aktivieren (nicht wirklich senden)</label>
+                <input type="checkbox" name="send_email" id="send_email">
+                <label for="send_email">Aktivieren</label>
               </div>
             </td>
           </tr>

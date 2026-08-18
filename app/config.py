@@ -22,8 +22,9 @@ class Settings:
 
     # Operating modes
     simulateSensor: bool = True
-    emailme: bool = True
-    skipmail: bool = True
+    send_email: bool = True  # Single checkbox for all email functionality
+    # Removed: emailme, skipmail
+    
     serialout: bool = True
     measure: bool = True
 

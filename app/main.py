@@ -132,7 +132,7 @@ def _exit_fish_safe_mode() -> None:
     scheduler.set_outputs_according_to_schedule(now.hour, now.minute)
     _prev_minute = -1
     _fish_safe_mode = False
-    if get_settings().emailme:
+    if get_settings().send_email:
         emailer.send_email(is_reboot=True)
 
 
@@ -148,7 +148,7 @@ def initialize_startup_mode() -> None:
 
     now = datetime.now()
     scheduler.set_outputs_according_to_schedule(now.hour, now.minute)
-    if get_settings().emailme:
+    if get_settings().send_email:
         emailer.send_email(is_reboot=True)
 
 
@@ -192,7 +192,7 @@ async def background_loop():
                 crud.add_temperature_entry(int(datetime.now().timestamp()), temp)
 
                 # Check temperature alarms (use >/< like ESP8266, not >=/<=)
-                if settings.emailme and (temp > settings.temp_alarmhigh_treshold or temp < settings.temp_alarmlow_treshold):
+                if settings.send_email and (temp > settings.temp_alarmhigh_treshold or temp < settings.temp_alarmlow_treshold):
                     emailer.send_alarm(temp)
                 logger.info(f"[LOOP] Temperature: {temp:.1f}°C")
 
@@ -206,7 +206,7 @@ async def background_loop():
                 # Weekly report
                 # ESP8266 uses tm_wday (Sunday=0), Python uses Monday=0.
                 # Use get_esp_day_of_week() to match the ESP8266 format.
-                if settings.emailme and not settings.skipmail:
+                if settings.send_email:
                     if (get_esp_day_of_week() == settings.weeklyReport_tm_wday and
                             now.hour == settings.weeklyReport_tm_hour and
                             now.minute == settings.weeklyReport_tm_min):
@@ -355,7 +355,7 @@ async def email_page():
         if result:
             return HTMLResponse("<html><body><h1>Email sent successfully</h1><a href='/'>Back</a></body></html>")
         else:
-            return HTMLResponse("<html><body><h1>Email not sent (check settings or skipmail)</h1><a href='/'>Back</a></body></html>")
+            return HTMLResponse("<html><body><h1>Email not sent (check settings)</h1><a href='/'>Back</a></body></html>")
     except Exception as e:
         logger.error(f"[EMAIL] Error: {e}")
         return HTMLResponse(f"<html><body><h1>Email error: {e}</h1><a href='/'>Back</a></body></html>")

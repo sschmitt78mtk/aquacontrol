@@ -173,9 +173,7 @@ All settings mirror the original ESP8266 `parameter` struct:
 | `Temp_Update_Interval_SIM_mins` | 1 | Simulated sensor read interval (min) |
 | `backupInterval_mins` | 240 | Data backup interval (min) |
 | `maxcooling_mins` | 180 | Max cooling duration before auto-shutoff |
-| `simulateSensor` | true | Use simulated temperature sensor |
-| `emailme` | true | Enable email notifications |
-| `skipmail` | true | Skip actual SMTP sending (log only) |
+| `send_email` | true | Enable email notifications |
 | `serialout` | true | Enable verbose logging |
 | `measure` | true | Enable temperature measurement |
 | `pwmfrequency` | 1000 | PWM frequency (Hz) |
