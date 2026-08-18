@@ -238,10 +238,28 @@ sudo systemctl disable aquacontrol    # stop auto-start at boot
 
 ## Temperature Data Storage
 
-- Circular buffer of 700 entries (≈1 week at 20-min intervals)
+- Circular buffer of `HISTORY_SIZE = 3000` entries (≈6 weeks at the 20-min live
+  interval, or ~2 days at the 1-min simulated interval)
 - Each entry: 4-byte Unix timestamp + 1-byte temperature deviation from 25°C (×10)
 - CSV export with UTF-8 BOM, semicolon delimiter, German decimal comma
 - Persisted in `data/temperature.pickle` at backup intervals (not on every reading)
+
+### Changing the buffer size (`HISTORY_SIZE`)
+
+`HISTORY_SIZE` (in `app/crud.py`) only sizes a **newly created** temperature
+buffer (via the dataclass `default_factory`). The pickle stores a **snapshot of
+the actual data**, not the constant, so changing `HISTORY_SIZE` in the code does
+**not** resize an existing `data/temperature.pickle`.
+
+On the next startup, `load_all()` prefers the pickle if it exists and therefore
+loads the old buffer at its original length. It keeps working (the code is
+size-agnostic) but never grows to the new size on its own.
+
+To actually get the new capacity, clear/delete `data/temperature.pickle` (or
+`POST /api/reset`) so `load_all()` falls back to a fresh buffer at the new size.
+This discards the existing readings. Keeping existing readings while resizing
+would require a small code change to pad/truncate the loaded buffer on startup
+(not currently implemented).
 
 ## Test Status
 
