@@ -28,18 +28,6 @@
             border: 1px solid #ffcdd2;
             background: #ffebee;
         }
-        #graph:hover::after {
-            content: "Rechtsklick zum Speichern";
-            position: absolute;
-            bottom: 5px;
-            right: 5px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 2px 5px;
-            font-size: 0.8em;
-            border-radius: 3px;
-        }
-
         /* Save button (primary mobile save path) */
         #saveSvgBtn {
             display: inline-block;
@@ -442,8 +430,7 @@
         // Automatisch ausführen
         loadAndDrawGraph().catch(error => showError('Fehler beim Laden der Temperaturdaten: ' + error.message));
 		
-        // SVG-Grafik als Datei speichern (wird vom Button und vom
-        // Rechtsklick genutzt).
+        // SVG-Grafik als Datei speichern (wird vom Button genutzt).
         function saveSvg() {
             const svgElement = document.getElementById('graph').querySelector('svg');
             if (!svgElement) return;
@@ -468,12 +455,6 @@
 
         // Speichern-Button (primaerer Speicherpfad, auch auf Mobil)
         document.getElementById('saveSvgBtn').addEventListener('click', saveSvg);
-
-        // Event-Listener fuer Rechtsklick (Desktop-Komfort)
-        document.getElementById('graph').addEventListener('contextmenu', function(e) {
-            e.preventDefault();
-            saveSvg();
-        });
 
     </script>
 </body>
