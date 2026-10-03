@@ -189,7 +189,6 @@ SMTP_PORT=465
 SMTP_AUTH_EMAIL=your-email@gmail.com
 SMTP_AUTH_PASSWORD=your-app-password
 RECIPIENT_EMAIL=recipient@example.com
-NTP_SERVER=fritz.box
 SECRET_KEY=change-this-to-random-string
 ```
 

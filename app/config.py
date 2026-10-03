@@ -34,9 +34,6 @@ class Settings:
     weeklyReport_tm_hour: int = 22
     weeklyReport_tm_min: int = 0
 
-    # Network settings
-    ntpServer: str = "fritz.box"
-
     # Email settings (loaded from .env but also persisted in pickle)
     smtp_AUTH_EMAIL: str = ""
     smtp_AUTH_PASSWORD: str = ""
@@ -64,7 +61,6 @@ def load_credentials() -> dict[str, str | int]:
         "smtp_auth_email": settings.smtp_AUTH_EMAIL or os.getenv("SMTP_AUTH_EMAIL", ""),
         "smtp_auth_password": settings.smtp_AUTH_PASSWORD or os.getenv("SMTP_AUTH_PASSWORD", ""),
         "recipient_email": settings.smtp_RECIPIENT_EMAIL or os.getenv("RECIPIENT_EMAIL", ""),
-        "ntp_server": os.getenv("NTP_SERVER", "fritz.box"),
         "secret_key": os.getenv("SECRET_KEY", ""),
     }
 

@@ -96,9 +96,6 @@
           document.querySelector('[name="weeklyReport_tm_hour"]').value = data.weeklyReport_tm_hour ?? '';
           document.querySelector('[name="weeklyReport_tm_min"]').value = data.weeklyReport_tm_min ?? '';
           
-          // Netzwerk
-          document.querySelector('[name="ntpServer"]').value = data.ntpServer || '';
-          
           // E-Mail
           document.querySelector('[name="smtp_AUTH_EMAIL"]').value = data.smtp_AUTH_EMAIL || '';
           document.querySelector('[name="smtp_AUTH_PASSWORD"]').value = data.smtp_AUTH_PASSWORD || '';
@@ -287,18 +284,6 @@
             <td class="param-value">
               <input type="number" min="0" max="59" name="weeklyReport_tm_min" placeholder="0">
               <div class="info">0-59</div>
-            </td>
-          </tr>
-        </table>
-      </div>
-
-      <div class="section">
-        <h3>Netzwerk Einstellungen</h3>
-        <table class="param-table">
-          <tr>
-            <td class="param-label">NTP Server:</td>
-            <td class="param-value">
-              <input type="text" name="ntpServer" placeholder="fritz.box">
             </td>
           </tr>
         </table>
