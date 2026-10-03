@@ -11,7 +11,7 @@ import subprocess
 import time
 from urllib.parse import parse_qs
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings, settings_to_dict, update_settings_from_dict
 from app.models import (
     ScheduleEntryIn, ScheduleEntryOut, DeviceStateRequest,
-    StatusResponse, ParameterUpdateRequest,
+    StatusResponse, ParameterUpdateRequest, TimeStatusResponse,
 )
 from app.gpio_interface import (
     get_gpio, LIGHT_PWMPIN, COOLING_PWMPIN,
@@ -64,6 +64,9 @@ SIMULATE_INVALID_TIME = False
 NTP_RECHECK_SECONDS = 30
 _last_ntp_check = 0.0
 
+# Upper bound for every privileged `timedatectl` call (seconds).
+TIMEDATECTL_TIMEOUT_SECONDS = 10
+
 # Background loop control
 _background_task: asyncio.Task | None = None
 _run_background = True
@@ -87,8 +90,30 @@ def is_ntp_synchronized() -> bool:
     return result.returncode == 0 and result.stdout.strip().lower() == "yes"
 
 
+def _run_timedatectl(*args: str) -> subprocess.CompletedProcess:
+    """Run `sudo /usr/bin/timedatectl <args>` through the single OS seam."""
+    return subprocess.run(
+        ["sudo", "/usr/bin/timedatectl", *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=TIMEDATECTL_TIMEOUT_SECONDS,
+    )
+
+
+def _timedatectl_message(result: subprocess.CompletedProcess) -> str:
+    """Return the most informative message from a failed timedatectl run."""
+    return result.stderr.strip() or result.stdout.strip() or "timedatectl failed"
+
+
 def set_system_time(value: str) -> None:
-    """Set local system time from a validated HTML datetime-local value."""
+    """Set local system time from a validated HTML datetime-local value.
+
+    systemd refuses `timedatectl set-time` while an NTP service is active
+    (systemd-timesyncd is active by default on Raspberry Pi OS), so NTP is
+    disabled for the write and re-enabled afterwards - also when the write
+    itself fails, so NTP never stays disabled by accident.
+    """
     try:
         parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M")
     except ValueError as error:
@@ -96,16 +121,66 @@ def set_system_time(value: str) -> None:
     if not 2024 <= parsed.year <= 2100:
         raise ValueError("Year must be between 2024 and 2100.")
 
-    result = subprocess.run(
-        ["sudo", "/usr/bin/timedatectl", "set-time", parsed.strftime("%Y-%m-%d %H:%M:00")],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=10,
-    )
+    disabled = _run_timedatectl("set-ntp", "false")
+    if disabled.returncode != 0:
+        # Nothing was changed yet, so there is nothing to restore.
+        raise RuntimeError(_timedatectl_message(disabled))
+
+    try:
+        result = _run_timedatectl("set-time", parsed.strftime("%Y-%m-%d %H:%M:00"))
+        if result.returncode != 0:
+            raise RuntimeError(_timedatectl_message(result))
+    finally:
+        restored = _run_timedatectl("set-ntp", "true")
+        if restored.returncode != 0:
+            logger.error(
+                "[TIME] Failed to re-enable NTP after manual time set: %s",
+                _timedatectl_message(restored),
+            )
+
+
+def get_time_status() -> dict[str, str | bool]:
+    """Return the current clock / time-source status as read-only data.
+
+    Built from a single `timedatectl show` call plus the local and UTC wall
+    clocks, so the ~1 s background loop stays untouched (called on demand by
+    the Settings page only).
+    """
+    status: dict[str, str | bool] = {
+        "ntp_synchronized": False,
+        "ntp_active": False,
+        "local_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "utc_time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "timezone": "",
+    }
+    try:
+        result = subprocess.run(
+            [
+                "timedatectl", "show",
+                "--property=NTPSynchronized", "--property=NTP", "--property=Timezone",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        # Safe fallback: report an untrusted clock instead of failing.
+        return status
+
     if result.returncode != 0:
-        message = result.stderr.strip() or result.stdout.strip() or "timedatectl failed"
-        raise RuntimeError(message)
+        return status
+
+    properties: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        key, separator, value = line.partition("=")
+        if separator:
+            properties[key.strip()] = value.strip()
+
+    status["ntp_synchronized"] = properties.get("NTPSynchronized", "").lower() == "yes"
+    status["ntp_active"] = properties.get("NTP", "").lower() == "yes"
+    status["timezone"] = properties.get("Timezone", "")
+    return status
 
 
 def _should_auto_recover_from_fish_safe(now_monotonic: float) -> bool:
@@ -142,10 +217,12 @@ def initialize_startup_mode() -> None:
     get_crud().load_all()
     _fish_safe_mode = SIMULATE_INVALID_TIME or not is_ntp_synchronized()
     if _fish_safe_mode:
+        logger.warning("[TIME] Clock untrusted (NTP not synchronized); starting in fish-safe mode")
         _last_ntp_check = time.monotonic()
         scheduler.start_fish_safe_mode()
         return
 
+    logger.info("[TIME] Clock trusted (NTP synchronized); starting normal schedule")
     now = datetime.now()
     scheduler.set_outputs_according_to_schedule(now.hour, now.minute)
     if get_settings().send_email:
@@ -411,6 +488,12 @@ async def api_status():
         RELAYCO2=relay_co2,
         RELAYMOON=relay_moon,
     )
+
+
+@app.get("/api/time-status", response_model=TimeStatusResponse)
+async def api_time_status():
+    """Get the current clock / time-source status (read-only)."""
+    return TimeStatusResponse(**get_time_status())
 
 
 @app.get("/api/parameters")

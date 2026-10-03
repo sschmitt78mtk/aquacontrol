@@ -144,8 +144,25 @@
       }
     }
     
+    function loadTimeStatus() {
+      fetch('/api/time-status')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('timeStatusNtpSynced').textContent = data.ntp_synchronized ? 'Ja' : 'Nein';
+          document.getElementById('timeStatusNtpActive').textContent = data.ntp_active ? 'Ja' : 'Nein';
+          document.getElementById('timeStatusLocal').textContent = data.local_time || '-';
+          document.getElementById('timeStatusUtc').textContent = data.utc_time || '-';
+          document.getElementById('timeStatusTimezone').textContent = data.timezone || 'unbekannt';
+        })
+        .catch(error => {
+          console.error('Fehler beim Laden des Zeitstatus:', error);
+          document.getElementById('timeStatusLocal').textContent = 'Fehler beim Laden';
+        });
+    }
+
     window.onload = function() {
       loadParameters();
+      loadTimeStatus();
       setTimeout(initializePasswordToggles, 100);
     };
   </script>
@@ -159,6 +176,33 @@
     </div>
     
     <div id="statusMessage" class="status"></div>
+
+    <div class="section">
+      <h3>Zeitstatus</h3>
+      <table class="param-table">
+        <tr>
+          <td class="param-label">NTP synchronisiert:</td>
+          <td class="param-value" id="timeStatusNtpSynced">-</td>
+        </tr>
+        <tr>
+          <td class="param-label">NTP-Dienst aktiv:</td>
+          <td class="param-value" id="timeStatusNtpActive">-</td>
+        </tr>
+        <tr>
+          <td class="param-label">Lokale Zeit:</td>
+          <td class="param-value" id="timeStatusLocal">-</td>
+        </tr>
+        <tr>
+          <td class="param-label">UTC-Zeit:</td>
+          <td class="param-value" id="timeStatusUtc">-</td>
+        </tr>
+        <tr>
+          <td class="param-label">Zeitzone:</td>
+          <td class="param-value" id="timeStatusTimezone">-</td>
+        </tr>
+      </table>
+      <div class="info">Anzeige der Systemzeit (nur lesen - die Uhrzeit wird hier nicht gesetzt).</div>
+    </div>
     
     <form id="settingsForm">
       

@@ -36,6 +36,14 @@ class StatusResponse(BaseModel):
     RELAYMOON: int
 
 
+class TimeStatusResponse(BaseModel):
+    ntp_synchronized: bool
+    ntp_active: bool
+    local_time: str
+    utc_time: str
+    timezone: str
+
+
 class ParameterUpdateRequest(BaseModel):
     temp_alarmhigh_treshold: Optional[float] = None
     temp_alarmlow_treshold: Optional[float] = None

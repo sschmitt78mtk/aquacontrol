@@ -45,11 +45,13 @@ static/
 tests/
 ├── conftest.py
 ├── test_config.py         # 5 tests
-├── test_crud.py           # 7 tests
+├── test_crud.py           # 9 tests
 ├── test_fader.py          # 6 tests
+├── test_fish_safe.py      # 5 tests
 ├── test_gpio.py           # 6 tests
 ├── test_models.py         # 4 tests
 ├── test_temperature.py    # 4 tests
+├── test_time_startup.py   # 20 tests (fish-safe startup, manual set-time, clock status)
 └── test_time_utils.py     # 6 tests
 data/                      # (auto-created) pickle storage
 ```
@@ -103,6 +105,7 @@ data/                      # (auto-created) pickle storage
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/status` | Current system status (time, temp, PWM, relays) |
+| GET | `/api/time-status` | Clock / time source (NTP synchronized, NTP active, local + UTC time, timezone) |
 | GET | `/api/parameters` | All settings as JSON |
 | POST | `/api/parameters` | Update settings (partial) |
 | GET | `/api/schedule` | Schedule entries as JSON |
@@ -149,17 +152,23 @@ If systemd does not report `yes`, normal schedule processing is not started. Ins
 - Moonlight emits an SOS pattern using whole-second dots and dashes, so no faster scheduler is needed.
 - Schedule, reports, automatic shutdown, temperature logging, and API control are unavailable until time is confirmed.
 
-While fish-safe mode is active, the controller re-checks NTP every 30 seconds and automatically resumes the normal schedule once the clock synchronizes (e.g. internet/NTP becoming reachable a few minutes after boot). Until then, every route redirects to `/set-time`; entering a correct local date/time on that page sets the Pi system clock via `sudo timedatectl set-time` and starts the normal schedule immediately. This manual fallback works without Internet or NTP, but the browser must be able to reach the Pi over a local network or access point.
+While fish-safe mode is active, the controller re-checks NTP every 30 seconds and automatically resumes the normal schedule once the clock synchronizes (e.g. internet/NTP becoming reachable a few minutes after boot). Until then, every route redirects to `/set-time`; entering a correct local date/time on that page sets the Pi system clock and starts the normal schedule immediately.
+
+systemd refuses `timedatectl set-time` while any NTP service is active (`systemd-timesyncd` runs by default on Raspberry Pi OS, even before it has reached a server), so AquaControl brackets the write: `sudo timedatectl set-ntp false` → `sudo timedatectl set-time` → `sudo timedatectl set-ntp true`. The re-enable runs in a `finally` block, so NTP is restored even when the write itself fails; a failure is reported on the page with its reason. This manual fallback works without Internet or NTP, but the browser must be able to reach the Pi over a local network or access point, and the restricted sudo rule below must be installed.
+
+> Residual risk: if the process is killed between `set-ntp false` and `set-ntp true`, the NTP service stays disabled. Re-enable it manually with `sudo timedatectl set-ntp true`.
 
 ### Required permission for manual time entry
 
 The service runs as `sascha`, while setting system time requires root permission. Install the following restricted sudoers rule with `sudo visudo -f /etc/sudoers.d/aquacontrol-time`:
 
 ```
-sascha ALL=(root) NOPASSWD: /usr/bin/timedatectl set-time *
+sascha ALL=(root) NOPASSWD: /usr/bin/timedatectl set-time *, \
+                             /usr/bin/timedatectl set-ntp true, \
+                             /usr/bin/timedatectl set-ntp false
 ```
 
-Set the correct service user in place of `sascha` if needed, then verify the file mode is `0440`. This permission is intentionally restricted to `timedatectl set-time`; do not grant unrestricted passwordless sudo.
+Set the correct service user in place of `sascha` if needed, then verify the file mode is `0440`. This permission is intentionally restricted to `timedatectl set-time` plus the two `timedatectl set-ntp` booleans that `set_system_time()` uses; do not grant unrestricted passwordless sudo.
 
 ## Settings
 
@@ -260,16 +269,18 @@ would require a small code change to pad/truncate the loaded buffer on startup
 
 ## Test Status
 
-**38 tests passing** ✅
+**65 tests passing** ✅
 
 ```
-tests/test_config.py       5 passed
-tests/test_crud.py         7 passed
-tests/test_fader.py        6 passed
-tests/test_gpio.py         6 passed
-tests/test_models.py       4 passed
-tests/test_temperature.py  4 passed
-tests/test_time_utils.py   6 passed
+tests/test_config.py        5 passed
+tests/test_crud.py          9 passed
+tests/test_fader.py         6 passed
+tests/test_fish_safe.py     5 passed
+tests/test_gpio.py          6 passed
+tests/test_models.py        4 passed
+tests/test_temperature.py   4 passed
+tests/test_time_startup.py 20 passed
+tests/test_time_utils.py    6 passed
 ```
 
 ## License
