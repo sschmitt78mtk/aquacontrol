@@ -51,7 +51,8 @@ class ParameterUpdateRequest(BaseModel):
     Temp_Update_Interval_SIM_mins: Optional[int] = None
     backupInterval_mins: Optional[int] = None
     maxcooling_mins: Optional[int] = None
-    # Removed: simulateSensor, emailme, skipmail
+    simulateSensor: Optional[bool] = None
+    # Removed: emailme, skipmail
     send_email: Optional[bool] = None
     serialout: Optional[bool] = None
     measure: Optional[bool] = None

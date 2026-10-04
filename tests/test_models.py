@@ -41,3 +41,17 @@ def test_parameter_update_request():
     r = ParameterUpdateRequest(temp_alarmhigh_treshold=30.0)
     assert r.temp_alarmhigh_treshold == 30.0
     assert r.measure is None  # not provided
+
+
+def test_parameter_update_request_simulate_sensor():
+    """Test that simulateSensor is accepted and survives a partial update.
+
+    Regression test: simulateSensor was missing from the model, so the value
+    sent by the settings web UI was silently dropped and the checkbox always
+    reverted to its default (True).
+    """
+    r = ParameterUpdateRequest(simulateSensor=False)
+    assert r.simulateSensor is False
+
+    dumped = {k: v for k, v in r.model_dump().items() if v is not None}
+    assert dumped == {"simulateSensor": False}
